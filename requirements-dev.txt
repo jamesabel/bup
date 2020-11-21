@@ -1,0 +1,19 @@
+awsimple
+balsa
+pressenter2exit
+boto3
+awscli
+github3.py
+GitPython
+typeguard
+pyqt5
+#
+# dev
+wheel
+black
+pytest
+coverage
+pytest-cov
+pyship
+flake8
+pyqt5-tools
