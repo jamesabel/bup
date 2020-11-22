@@ -130,3 +130,5 @@ dmypy.json
 
 # jca
 .idea/
+# the actual license file is LICENSE (no .txt)
+LICENSE.txt
