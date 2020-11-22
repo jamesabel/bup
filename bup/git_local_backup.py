@@ -11,7 +11,7 @@ import appdirs
 from pressenter2exit import PressEnter2ExitGUI
 from balsa import get_logger
 
-from bup import __application_name__, __author__, print_log
+from bup import __application_name__, __author__, print_log, BupBase
 
 log = get_logger(__application_name__)
 
@@ -62,39 +62,41 @@ def pull_branches(repo_name: str, branches: Iterable, repo_dir: str):
             git_repo.git.pull()
 
 
-def github_local_backup(backup_dir: str, github_subdir: str):
+class GitBackup(BupBase):
 
-    backup_dir = Path(backup_dir, github_subdir)
+    def github_local_backup(self):
 
-    gh = get_github_auth()
-    for github_repo in gh.repositories():
+        backup_dir = Path(self.backup_directory, "github")
 
-        if not get_press_enter_to_exit().is_alive():
-            break
+        gh = get_github_auth()
+        for github_repo in gh.repositories():
 
-        repo_name = str(github_repo)
-        repo_dir = Path(backup_dir, repo_name).absolute()
-        branches = github_repo.branches()
+            if not get_press_enter_to_exit().is_alive():
+                break
 
-        # if we've cloned previously, just do a pull
-        pull_success = False
-        if repo_dir.exists():
-            try:
-                pull_branches(repo_name, branches, repo_dir)
-                pull_success = True
-            except GitCommandError as e:
-                log.info(e)
-                print_log(f'could not pull "{repo_dir}" - will try to start over and do a clone of "{repo_name}"')
+            repo_name = str(github_repo)
+            repo_dir = Path(backup_dir, repo_name).absolute()
+            branches = github_repo.branches()
 
-        # new to us - clone the repo
-        if not pull_success:
-            try:
-                if repo_dir.exists():
-                    shutil.rmtree(repo_dir)
+            # if we've cloned previously, just do a pull
+            pull_success = False
+            if repo_dir.exists():
+                try:
+                    pull_branches(repo_name, branches, repo_dir)
+                    pull_success = True
+                except GitCommandError as e:
+                    log.info(e)
+                    print_log(f'could not pull "{repo_dir}" - will try to start over and do a clone of "{repo_name}"')
 
-                print_log(f'git clone "{repo_name}" to "{repo_dir}"')
+            # new to us - clone the repo
+            if not pull_success:
+                try:
+                    if repo_dir.exists():
+                        shutil.rmtree(repo_dir)
 
-                Repo.clone_from(github_repo.clone_url, repo_dir)
-                pull_branches(repo_name, branches, repo_dir)
-            except PermissionError as e:
-                log.warning(f"{repo_name} : {e}")
+                    print_log(f'git clone "{repo_name}" to "{repo_dir}"')
+
+                    Repo.clone_from(github_repo.clone_url, repo_dir)
+                    pull_branches(repo_name, branches, repo_dir)
+                except PermissionError as e:
+                    log.warning(f"{repo_name} : {e}")
