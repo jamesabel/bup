@@ -4,6 +4,7 @@ from pathlib import Path
 from PyQt5.QtWidgets import QDialog, QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QGroupBox, QTextEdit
 
 from bup import __application_name__, __version__, BupBase, S3Backup, DynamoDBBackup, GithubBackup
+from bup.gui import PreferencesBox, GUIPreferences
 
 max_text_lines = 100
 
@@ -18,17 +19,18 @@ backup_classes = {BackupTypes.S3: S3Backup, BackupTypes.DynamoDB: DynamoDBBackup
 
 
 class DisplayTypes(Enum):
+    exclusions = "Exclusions (one per line)"
     log = "Log"
     warnings = "Warnings"
     errors = "Errors"
 
 
 class DisplayBox(QGroupBox):
-    def __init__(self, name: str):
+    def __init__(self, name: str, read_only: bool):
         super().__init__(name)
         self.setLayout(QVBoxLayout())
         self.text_box = QTextEdit()
-        self.text_box.setReadOnly(True)
+        self.text_box.setReadOnly(read_only)
         self.layout().addWidget(self.text_box)
         self.text = []
 
@@ -43,7 +45,7 @@ class DisplayBox(QGroupBox):
         self.text_box.setText("")
 
 
-class StatusWidget(QGroupBox):
+class BackupWidget(QGroupBox):
     def __init__(self, backup_type: BackupTypes, backup_engine: BupBase):
         super().__init__(backup_type.name)
         self.backup_engine = backup_engine
@@ -51,7 +53,7 @@ class StatusWidget(QGroupBox):
 
         self.display_boxes = {}
         for display_type in DisplayTypes:
-            self.display_boxes[display_type] = DisplayBox(display_type.value)
+            self.display_boxes[display_type] = DisplayBox(display_type.value, display_type is not DisplayTypes.exclusions)
             self.layout().addWidget(self.display_boxes[display_type])
 
 
@@ -80,17 +82,22 @@ class BupDialog(QDialog):
         self.controls_layout.addWidget(self.pause_button)
         self.controls_layout.addWidget(self.stop_button)
 
+        # preferences
+        self.preferences_widget = PreferencesBox()
+
         # status
         self.status_widget = QGroupBox("Status")
         self.status_layout = QHBoxLayout()
         self.status_widget.setLayout(self.status_layout)
         self.backup_status = {}
         self.backup_engines = {}
+        preferences = GUIPreferences()
         for backup_type in BackupTypes:
 
             # todo: fill in options here
-            engine = backup_classes[backup_type](Path("temp"), None, False, None)
-            self.backup_status[backup_type] = StatusWidget(backup_type, engine)
+            engine = backup_classes[backup_type](preferences.get_backup_directory(), preferences.get_exclusions_string(backup_type.name), preferences.get_dry_run(),
+                                                 preferences.get_aws_profile)
+            self.backup_status[backup_type] = BackupWidget(backup_type, engine)
             self.backup_engines[backup_type] = engine
 
             self.backup_status[backup_type].setLayout(QHBoxLayout())
@@ -98,6 +105,7 @@ class BupDialog(QDialog):
 
         # add all the widgets to the top level layout
         self.top_level_layout.addWidget(self.controls_widget)
+        self.top_level_layout.addWidget(self.preferences_widget)
         self.top_level_layout.addWidget(self.status_widget)
 
     def start(self):

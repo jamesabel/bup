@@ -61,7 +61,7 @@ class GUIPreferences:
                 value = None
                 log.debug(f"modifying existing entry {key}={value}")
         except NoResultFound:
-            log.info("no result found")
+            log.debug(f"{key} : no result found")
         if value is not None:
             # key not already in table - add it
             pref = PreferencesTable(key=key, value=str(value))
@@ -94,8 +94,57 @@ class GUIPreferences:
         log.info("w : %d , h : %d" % (w, h))
         return w, h
 
-    def set_verbose(self, value):
-        self._set("verbose", value)
+    # backup directory
+    backup_directory_string = "backup_directory"
 
-    def get_verbose(self):
-        return to_bool(self._get("verbose", False))
+    def set_backup_directory(self, value: Path):
+        self._set(self.backup_directory_string, str(value))
+
+    def get_backup_directory(self) -> (Path, None):
+        return self._get(self.backup_directory_string, None)
+
+    # exclusions
+    def get_exclusions_string(self, exclusion_type: str):
+        return f"exclusions_{exclusion_type}"
+
+    def set_exclusions(self, exclusion_type: str, values_string: str):
+        # store as newline separated
+        self._set(self.get_exclusions_string(exclusion_type), "\n".join(values_string.split()))
+
+    def get_exclusions(self, exclusion_type: str) -> list:
+        # return as a list
+        return self._get(self.get_exclusions_string(exclusion_type), "").split()
+
+    # AWS IAM (need either AWS Profile or Access Key ID/Secret Access Key pair)
+    aws_profile_string = "aws_profile"
+
+    def set_aws_profile(self, profile: str):
+        self._set(self.aws_profile_string, profile)
+
+    def get_aws_profile(self) -> str:
+        return self._get(self.aws_profile_string)
+
+    aws_access_key_id_string = "aws_access_key_id"
+
+    def set_aws_access_key_id(self, profile: str):
+        self._set(self.aws_access_key_id_string, profile)
+
+    def get_aws_access_key_id(self) -> str:
+        return self._get(self.aws_access_key_id_string)
+
+    aws_secret_access_key_string = "aws_secret_access_key"
+
+    def set_aws_secret_access_key(self, profile: str):
+        self._set(self.aws_secret_access_key_string, profile)
+
+    def get_aws_secret_access_key(self) -> str:
+        return self._get(self.aws_secret_access_key_string)
+
+    # dry run
+    dry_run_string = "dry_run"
+
+    def set_dry_run(self, dry_run: bool):
+        self._set(self.dry_run_string, dry_run)
+
+    def get_dry_run(self) -> bool:
+        return to_bool(self._get(self.dry_run_string))
