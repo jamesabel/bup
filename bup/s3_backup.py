@@ -1,6 +1,7 @@
 import subprocess
 import os
 import re
+from pathlib import Path
 from multiprocessing import freeze_support
 
 from typeguard import typechecked
@@ -17,7 +18,7 @@ freeze_support()
 
 
 # sundry candidate
-def get_dir_size(dir_path):
+def get_dir_size(dir_path: Path):
     dir_size = 0
     file_count = 0
     for dir_path, _, file_names in os.walk(dir_path):
@@ -63,11 +64,11 @@ class S3Backup(BupBase):
 
                 aws_cli_path = f'"{os.path.abspath(os.path.join("venv", "Scripts", "aws"))}"'
 
-                destination = os.path.join(backup_directory, bucket_name)
+                destination = Path(backup_directory, bucket_name)
                 os.makedirs(destination, exist_ok=True)
                 s3_bucket_path = f"s3://{bucket_name}"
                 # Don't use --delete.  We want to keep 'old' files locally.
-                sync_command_line = [aws_cli_path, "s3", "sync", s3_bucket_path, os.path.abspath(destination)]
+                sync_command_line = [aws_cli_path, "s3", "sync", s3_bucket_path, str(destination.absolute())]
                 if self.dry_run:
                     sync_command_line.append("--dryrun")
                 sync_command_line_str = " ".join(sync_command_line)

@@ -1,6 +1,6 @@
 from balsa import Balsa, get_logger
 
-from bup import __application_name__, __author__, __version__, arguments, S3Backup, DynamoDBBackup, GitBackup
+from bup import __application_name__, __author__, __version__, arguments, S3Backup, DynamoDBBackup, GithubBackup
 
 log = get_logger(__application_name__)
 
@@ -41,7 +41,7 @@ def cli_main(args):
         dynamodb_local_backup.start()
         did_something = True
     if args.github:
-        github_local_backup = GitBackup(args.path, dry_run=args.dry_run)
+        github_local_backup = GithubBackup(args.path, dry_run=args.dry_run)
         github_local_backup.start()
         did_something = True
     if not did_something:

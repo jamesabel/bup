@@ -1,8 +1,9 @@
 from enum import Enum
+from pathlib import Path
 
 from PyQt5.QtWidgets import QDialog, QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QGroupBox, QTextEdit
 
-from bup import __application_name__, __version__
+from bup import __application_name__, __version__, BupBase, S3Backup, DynamoDBBackup, GithubBackup
 
 max_text_lines = 100
 
@@ -11,6 +12,9 @@ class BackupTypes(Enum):
     S3 = 0
     DynamoDB = 1
     github = 2
+
+
+backup_classes = {BackupTypes.S3: S3Backup, BackupTypes.DynamoDB: DynamoDBBackup, BackupTypes.github: GithubBackup}
 
 
 class DisplayTypes(Enum):
@@ -40,8 +44,9 @@ class DisplayBox(QGroupBox):
 
 
 class StatusWidget(QGroupBox):
-    def __init__(self, name: str):
-        super().__init__(name)
+    def __init__(self, backup_type: BackupTypes, backup_engine: BupBase):
+        super().__init__(backup_type.name)
+        self.backup_engine = backup_engine
         self.setLayout(QVBoxLayout())
 
         self.display_boxes = {}
@@ -53,6 +58,7 @@ class StatusWidget(QGroupBox):
 class BupDialog(QDialog):
     def __init__(self):
         super().__init__()
+
         self.setWindowTitle(f"{__application_name__} ({__version__})")
 
         self.top_level_layout = QVBoxLayout()
@@ -79,8 +85,14 @@ class BupDialog(QDialog):
         self.status_layout = QHBoxLayout()
         self.status_widget.setLayout(self.status_layout)
         self.backup_status = {}
+        self.backup_engines = {}
         for backup_type in BackupTypes:
-            self.backup_status[backup_type] = StatusWidget(backup_type.name)
+
+            # todo: fill in options here
+            engine = backup_classes[backup_type](Path("temp"), None, False, None)
+            self.backup_status[backup_type] = StatusWidget(backup_type, engine)
+            self.backup_engines[backup_type] = engine
+
             self.backup_status[backup_type].setLayout(QHBoxLayout())
             self.status_layout.addWidget(self.backup_status[backup_type])
 

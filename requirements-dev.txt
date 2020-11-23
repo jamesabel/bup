@@ -7,6 +7,8 @@ github3.py
 GitPython
 typeguard
 pyqt5
+sqlalchemy
+tobool
 #
 # dev
 wheel

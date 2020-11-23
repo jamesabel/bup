@@ -62,7 +62,7 @@ def pull_branches(repo_name: str, branches: Iterable, repo_dir: str):
             git_repo.git.pull()
 
 
-class GitBackup(BupBase):
+class GithubBackup(BupBase):
 
     def github_local_backup(self):
 
