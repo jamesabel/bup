@@ -5,3 +5,4 @@ from .bup_base import BupBase
 from .s3_backup import S3Backup
 from .dynamodb_backup import DynamoDBBackup
 from .github_backup import GithubBackup
+from .backup_types import BackupTypes, backup_classes
