@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QGroupBox, QTextEdit, QLabel, QFileDialog, QGridLayout, QLineEdit
+from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QGroupBox, QTextEdit, QLabel, QFileDialog, QGridLayout, QLineEdit, QSpacerItem, QSizePolicy
 
 from bup.gui import GUIPreferences
 
@@ -23,30 +23,42 @@ class PreferencesWidget(QWidget):
         self.backup_directory_group_box.setMaximumHeight(self.backup_directory_group_box.minimumHeight())
         self.layout().addWidget(self.backup_directory_group_box)
 
-        # AWS
-        self.aws_group_box = QGroupBox(title="AWS (either Profile or Access Key ID/Secret Access Key)")
-        self.aws_group_box.setLayout(QHBoxLayout())
-        self.aws_profile_box = QLineEdit()
+        # AWS Credentials
+        self.aws_group_box = QGroupBox(title="AWS Credentials (either Profile or Access Key ID/Secret Access Key)")
+        self.aws_group_box.setLayout(QVBoxLayout())
+        # profile
+        self.aws_profile_widget = QWidget()
+        self.aws_profile_widget.setLayout(QHBoxLayout())
+        self.aws_profile_widget.layout().addWidget(QLabel("AWS Profile:"))
+        self.aws_profile_line_edit = QLineEdit()
+        self.aws_profile_widget.layout().addWidget(self.aws_profile_line_edit)
+        self.aws_group_box.layout().addWidget(self.aws_profile_widget)
+        # access key ID and secret access key
+        self.aws_key_widget = QWidget()
+        self.aws_key_widget.setLayout(QHBoxLayout())
+        self.aws_key_widget.layout().addWidget(QLabel("AWS Access Key ID:"))
         self.aws_access_key_id_box = QLineEdit()
+        self.aws_key_widget.layout().addWidget(self.aws_access_key_id_box)
+        self.aws_key_widget.layout().addWidget(QLabel("AWS Secret Access Key:"))
         self.aws_secret_access_key_box = QLineEdit()
         self.aws_secret_access_key_box.setEchoMode(QLineEdit.Password)
+        self.aws_key_widget.layout().addWidget(self.aws_secret_access_key_box)
         self.aws_show_button = QPushButton("Show")
+        self.aws_key_widget.layout().addWidget(self.aws_show_button)
+        self.aws_group_box.layout().addWidget(self.aws_key_widget)
+        # save/cancel
+        button_padding_factor = 3  # SWAG
+        self.aws_save_cancel_widget = QWidget()
+        self.aws_save_cancel_widget.setLayout(QHBoxLayout())
         self.aws_save_button = QPushButton("Save")
         self.aws_cancel_button = QPushButton("Cancel")
-        self.aws_group_box.layout().addWidget(QLabel("AWS Profile"))
-        self.aws_group_box.layout().addWidget(self.aws_profile_box)
-        self.aws_group_box.layout().addWidget(QLabel("AWS Access Key ID"))
-        self.aws_group_box.layout().addWidget(self.aws_access_key_id_box)
-        self.aws_group_box.layout().addWidget(QLabel("AWS Secret Access Key"))
-        self.aws_group_box.layout().addWidget(self.aws_secret_access_key_box)
-        self.aws_group_box.layout().addWidget(self.aws_show_button)
-        self.aws_group_box.layout().addWidget(self.aws_save_button)
-        self.aws_group_box.layout().addWidget(self.aws_cancel_button)
-        self.aws_group_box.adjustSize()  # all done adding - figure out what the height should be
-        self.aws_group_box.setMaximumHeight(self.aws_group_box.minimumHeight())
+        self.aws_save_cancel_widget.layout().addWidget(self.aws_save_button)
+        self.aws_save_cancel_widget.layout().addWidget(self.aws_cancel_button)
+        self.aws_save_cancel_widget.layout().addStretch()  # right padding
+        self.aws_group_box.layout().addWidget(self.aws_save_cancel_widget)
         self.layout().addWidget(self.aws_group_box)
 
-        self.layout().addWidget(QLabel())  # bottom padding
+        self.layout().addStretch()  # bottom padding
 
         self.load_preferences()
 
