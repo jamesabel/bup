@@ -17,7 +17,7 @@ setup(
     version=__version__,
     author=__author__,
     author_email=__author_email__,
-    license="MIT License",
+    license="GPL v3",
     url=__url__,
     download_url=__download_url__,
     keywords=["aws", "dynamodb", "s3", "github", "backup"],

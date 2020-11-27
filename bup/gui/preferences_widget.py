@@ -13,11 +13,11 @@ class PreferencesWidget(QWidget):
         # backup directory
         self.backup_directory_widget = QWidget()
         self.backup_directory_widget.setLayout(QHBoxLayout())
-        self.backup_directory_box = QLineEdit()
+        self.backup_directory_line_edit = QLineEdit()
         self.select_backup_directory_button = QPushButton("Select Backup Directory")
         self.select_backup_directory_button.clicked.connect(self.select_backup_directory)
         self.backup_directory_widget.layout().addWidget(QLabel("Backup Directory:"))
-        self.backup_directory_widget.layout().addWidget(self.backup_directory_box)
+        self.backup_directory_widget.layout().addWidget(self.backup_directory_line_edit)
         self.backup_directory_widget.layout().addWidget(self.select_backup_directory_button)
         self.backup_directory_widget.adjustSize()  # all done adding - figure out what the height should be
         self.backup_directory_widget.setMaximumHeight(self.backup_directory_widget.minimumHeight())
@@ -75,20 +75,33 @@ class PreferencesWidget(QWidget):
 
     def load_preferences(self):
         preferences = GUIPreferences()
-
         if (backup_path := preferences.get_backup_directory()) is None:
-            self.backup_directory_box.setText('press "Select Backup Directory" button to set ------>')
+            self.backup_directory_line_edit.setText('press "Select Backup Directory" button to set ------>')
         else:
-            self.backup_directory_box.setText(str(backup_path))
+            self.backup_directory_line_edit.setText(str(backup_path))
+
+    def items(self):
+        gui_preferences = GUIPreferences()
+        fields = [(gui_preferences.backup_directory_string, self.backup_directory_line_edit.text()),
+                  (gui_preferences.aws_profile_string, self.aws_profile_line_edit.text()),
+                  (gui_preferences.aws_access_key_id_string, self.aws_access_key_id_line_edit.text()),
+                  (gui_preferences.aws_secret_access_key_string, self.aws_secret_access_key_line_edit.text())]
+        d = {}
+        for k, v in fields:
+            if v is not None and len(v) > 0:
+                d[k] = v
+        return d
+
+    def __repr__(self):
+        return str(self.items())
 
     def select_backup_directory(self):
         new_backup_directory = QFileDialog.getExistingDirectory(self, "Select Backup Directory")
         if new_backup_directory is not None and len(new_backup_directory) > 0:
-            self.backup_directory_box.setText(new_backup_directory)
+            self.backup_directory_line_edit.setText(new_backup_directory)
 
     def save_aws_preferences(self):
         gui_preferences = GUIPreferences()
-        gui_preferences.set_backup_directory(self.backup_directory_box.text())
-        gui_preferences.set_aws_profile(self.aws_profile_line_edit.text())
-        gui_preferences.set_aws_access_key_id(self.aws_access_key_id_line_edit.text())
-        gui_preferences.set_aws_secret_access_key(self.aws_secret_access_key_line_edit.text())
+        for k, v in self.items():
+            if len(v) > 0:
+                gui_preferences.set(k, v)

@@ -48,7 +48,7 @@ class GUIPreferences:
         log.debug("closing session")
         session.close()
 
-    def _set(self, key: str, value):
+    def set(self, key: str, value):
         log.info(f"_set {key}={value}")
         session = self._make_session()
 
@@ -72,7 +72,7 @@ class GUIPreferences:
         self._close_session(session)
         log.debug(f"_set {key} complete")
 
-    def _get(self, key: str, default=None):
+    def get(self, key: str, default=None):
         log.debug(f"_get {key} (default:{default})")
         session = self._make_session()
         query_result = session.query(PreferencesTable).filter_by(key=key)
@@ -84,13 +84,25 @@ class GUIPreferences:
         self._close_session(session)
         return value
 
+    def items(self) -> dict:
+        session = self._make_session()
+        d = {}
+        for q in session.query(PreferencesTable).all():
+            if q.value is not None and len(q.value) > 0:
+                d[q.key] = q.value
+        self._close_session(session)
+        return d
+
+    def __repr__(self):
+        return str(self.items())
+
     def set_windows_dimensions(self, width: int, height: int):
-        self._set("width", width)
-        self._set("height", height)
+        self.set("width", width)
+        self.set("height", height)
 
     def get_windows_dimensions(self):
-        w = int(self._get("width"))
-        h = int(self._get("height"))
+        w = int(self.get("width"))
+        h = int(self.get("height"))
         log.info("w : %d , h : %d" % (w, h))
         return w, h
 
@@ -98,10 +110,10 @@ class GUIPreferences:
     backup_directory_string = "backup_directory"
 
     def set_backup_directory(self, value: Path):
-        self._set(self.backup_directory_string, str(value))
+        self.set(self.backup_directory_string, str(value))
 
     def get_backup_directory(self) -> (Path, None):
-        return self._get(self.backup_directory_string, None)
+        return self.get(self.backup_directory_string, None)
 
     # exclusions
     def get_exclusions_string(self, exclusion_type: str):
@@ -109,42 +121,42 @@ class GUIPreferences:
 
     def set_exclusions(self, exclusion_type: str, values_string: str):
         # store as newline separated
-        self._set(self.get_exclusions_string(exclusion_type), "\n".join(values_string.split()))
+        self.set(self.get_exclusions_string(exclusion_type), "\n".join(values_string.split()))
 
     def get_exclusions(self, exclusion_type: str) -> list:
         # return as a list
-        return self._get(self.get_exclusions_string(exclusion_type), "").split()
+        return self.get(self.get_exclusions_string(exclusion_type), "").split()
 
     # AWS IAM (need either AWS Profile or Access Key ID/Secret Access Key pair)
     aws_profile_string = "aws_profile"
 
     def set_aws_profile(self, profile: str):
-        self._set(self.aws_profile_string, profile)
+        self.set(self.aws_profile_string, profile)
 
     def get_aws_profile(self) -> str:
-        return self._get(self.aws_profile_string)
+        return self.get(self.aws_profile_string)
 
     aws_access_key_id_string = "aws_access_key_id"
 
     def set_aws_access_key_id(self, profile: str):
-        self._set(self.aws_access_key_id_string, profile)
+        self.set(self.aws_access_key_id_string, profile)
 
     def get_aws_access_key_id(self) -> str:
-        return self._get(self.aws_access_key_id_string)
+        return self.get(self.aws_access_key_id_string)
 
     aws_secret_access_key_string = "aws_secret_access_key"
 
     def set_aws_secret_access_key(self, profile: str):
-        self._set(self.aws_secret_access_key_string, profile)
+        self.set(self.aws_secret_access_key_string, profile)
 
     def get_aws_secret_access_key(self) -> str:
-        return self._get(self.aws_secret_access_key_string)
+        return self.get(self.aws_secret_access_key_string)
 
     # dry run
     dry_run_string = "dry_run"
 
     def set_dry_run(self, dry_run: bool):
-        self._set(self.dry_run_string, dry_run)
+        self.set(self.dry_run_string, dry_run)
 
     def get_dry_run(self) -> bool:
-        return to_bool(self._get(self.dry_run_string))
+        return to_bool(self.get(self.dry_run_string))
