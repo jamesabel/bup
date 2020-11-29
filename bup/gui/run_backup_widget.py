@@ -79,11 +79,11 @@ class RunBackupWidget(QWidget):
         preferences = GUIPreferences()
         for backup_type in BackupTypes:
             # todo: fill in options here
-            engine = backup_classes[backup_type](preferences.get_backup_directory(), preferences.get_exclusions_string(backup_type.name), preferences.get_dry_run(),
+            engine = backup_classes[backup_type](preferences.get_backup_directory(), preferences.get_exclusions_string(), preferences.get_dry_run(),
                                                  preferences.get_aws_profile)
-            self.backup_status[backup_type] = BackupWidget(backup_type, engine)
             self.backup_engines[backup_type] = engine
 
+            self.backup_status[backup_type] = BackupWidget(backup_type, engine)
             self.backup_status[backup_type].setLayout(QHBoxLayout())
             self.status_layout.addWidget(self.backup_status[backup_type])
 

@@ -7,7 +7,7 @@ github3.py
 GitPython
 typeguard
 pyqt5
-sqlalchemy
+sqlitedict
 tobool
 #
 # dev
