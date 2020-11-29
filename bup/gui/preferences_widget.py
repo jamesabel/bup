@@ -60,9 +60,7 @@ class PreferencesWidget(QWidget):
 
     def load_preferences(self):
         preferences = GUIPreferences()
-        if (backup_path := preferences.get_backup_directory()) is None or len(backup_path.strip()) < 1:
-            self.backup_directory_line_edit.setText("")
-        else:
+        if (backup_path := preferences.get_backup_directory()) is not None and len(backup_path.strip()) > 0:
             self.backup_directory_line_edit.setText(str(backup_path))
 
     def select_backup_directory(self):
