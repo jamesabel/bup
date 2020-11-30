@@ -3,7 +3,7 @@ from enum import Enum
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QGroupBox, QHBoxLayout, QTextEdit
 
 from bup import BackupTypes, BupBase, backup_classes
-from bup.gui import GUIPreferences
+from bup.gui import PreferencesStore
 
 max_text_lines = 100
 
@@ -76,7 +76,7 @@ class RunBackupWidget(QWidget):
         self.status_widget.setLayout(self.status_layout)
         self.backup_status = {}
         self.backup_engines = {}
-        preferences = GUIPreferences()
+        preferences = PreferencesStore()
         for backup_type in BackupTypes:
             # todo: fill in options here
             engine = backup_classes[backup_type](preferences.get_backup_directory(), preferences.get_exclusions_string(), preferences.get_dry_run(),

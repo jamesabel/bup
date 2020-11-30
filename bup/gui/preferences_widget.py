@@ -1,7 +1,7 @@
 
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QGroupBox, QTextEdit, QLabel, QFileDialog, QGridLayout, QLineEdit, QSpacerItem, QSizePolicy
 
-from bup.gui import GUIPreferences
+from bup.gui import PreferencesStore
 
 
 class PreferencesWidget(QWidget):
@@ -59,7 +59,7 @@ class PreferencesWidget(QWidget):
         self.load_preferences()
 
     def load_preferences(self):
-        preferences = GUIPreferences()
+        preferences = PreferencesStore()
         if (backup_path := preferences.get_backup_directory()) is not None and len(backup_path.strip()) > 0:
             self.backup_directory_line_edit.setText(str(backup_path))
 
@@ -69,5 +69,5 @@ class PreferencesWidget(QWidget):
             self.backup_directory_line_edit.setText(new_backup_directory)
 
     def new_backup_directory(self):
-        gui_preferences = GUIPreferences()
+        gui_preferences = PreferencesStore()
         gui_preferences.set_backup_directory(self.backup_directory_line_edit.text())

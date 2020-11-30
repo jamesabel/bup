@@ -9,6 +9,7 @@ typeguard
 pyqt5
 sqlitedict
 tobool
+attrs
 #
 # dev
 wheel

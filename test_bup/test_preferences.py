@@ -1,24 +1,17 @@
-from pprint import pprint
+from bup.gui import PreferencesStore, ListOfStringsStore
 
-from ismain import is_main
-from PyQt5.Qt import QApplication
-
-from bup.gui import GUIPreferences, PreferencesWidget
+from bup import BackupTypes
 
 
 def test_preferences():
+    preferences = PreferencesStore()
+    test_aws_profile = "test_aws_profile"
+    preferences.aws_profile = test_aws_profile
 
-    # todo: this currently just tests what's ever in the preferences, which can be nothing - in the future add writing test data
+    preferences = PreferencesStore()
+    assert preferences.aws_profile == test_aws_profile
 
-    gui_preferences = GUIPreferences()
-    pprint(gui_preferences)
-
-    app = QApplication([])  # needed for the preferences widget
-    preferences_widget = PreferencesWidget()
-    pprint(preferences_widget)
-
-    assert gui_preferences.items() == preferences_widget.items()
-
-
-if is_main():
-    test_preferences()
+    exclusions = ListOfStringsStore(BackupTypes.S3)
+    test_list = ["hi", "hello", "goodbye"]
+    exclusions.set_list(test_list)
+    assert exclusions.get_list() == test_list
