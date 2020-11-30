@@ -96,7 +96,7 @@ class PreferencesStore:
     #     return to_bool(self.get(self.dry_run_string))
 
 
-class ListOfStringsStore(SqliteDict):
+class OrderedSetOfStringsStore(SqliteDict):
     """
     store/retrieve a list of strings to/from a SQlite database
     """
@@ -105,7 +105,7 @@ class ListOfStringsStore(SqliteDict):
         # DB stores values directly (not encoded as a pickle)
         super().__init__(sqlite_path, backup_type.name, encode=lambda x: x, decode=lambda x: x)
 
-    def set_list(self, strings: list):
+    def set_set(self, strings: list):
         """
         set the list of strings
         :param strings: list of strings
@@ -116,7 +116,7 @@ class ListOfStringsStore(SqliteDict):
             self[string] = index
         self.commit()  # not using autocommit since we're updating (setting) multiple values in the above for loop
 
-    def get_list(self) -> List[str]:
+    def get_set(self) -> List[str]:
         """
         returns the list of strings
         :return: list of strings
