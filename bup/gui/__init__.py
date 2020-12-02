@@ -1,4 +1,4 @@
-from .preferences import PreferencesStore, OrderedSetOfStringsStore
+from .preferences import BupPreferences
 from .preferences_widget import PreferencesWidget
 from .run_backup_widget import RunBackupWidget
 from .bup_dialog import BupDialog

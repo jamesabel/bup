@@ -2,8 +2,8 @@ from enum import Enum
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QGroupBox, QHBoxLayout, QTextEdit
 
-from bup import BackupTypes, BupBase, backup_classes
-from bup.gui import PreferencesStore
+from bup import BackupTypes, BupBase, backup_classes, __application_name__, __author__
+from bup.gui import BupPreferences
 
 max_text_lines = 100
 
@@ -76,14 +76,13 @@ class RunBackupWidget(QWidget):
         self.status_widget.setLayout(self.status_layout)
         self.backup_status = {}
         self.backup_engines = {}
-        preferences = PreferencesStore()
+        preferences = BupPreferences(__application_name__, __author__)
         for backup_type in BackupTypes:
             # todo: fill in options here
-            engine = backup_classes[backup_type](preferences.get_backup_directory(), preferences.get_exclusions_string(), preferences.get_dry_run(),
-                                                 preferences.get_aws_profile)
-            self.backup_engines[backup_type] = engine
+            #engine = backup_classes[backup_type](preferences.backup_directory, preferences.aws_profile)
+            #self.backup_engines[backup_type] = print
 
-            self.backup_status[backup_type] = BackupWidget(backup_type, engine)
+            self.backup_status[backup_type] = BackupWidget(backup_type, lambda x:x)  # todo: pass in the backup engine
             self.backup_status[backup_type].setLayout(QHBoxLayout())
             self.status_layout.addWidget(self.backup_status[backup_type])
 

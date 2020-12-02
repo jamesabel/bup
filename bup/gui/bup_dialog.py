@@ -4,7 +4,7 @@ from pathlib import Path
 from PyQt5.QtWidgets import QDialog, QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QGroupBox, QTextEdit, QTabWidget
 
 from bup import __application_name__, __version__, BupBase, S3Backup, DynamoDBBackup, GithubBackup, BackupTypes
-from bup.gui import PreferencesWidget, PreferencesStore, RunBackupWidget
+from bup.gui import PreferencesWidget, BupPreferences, RunBackupWidget
 
 
 class BupDialog(QDialog):

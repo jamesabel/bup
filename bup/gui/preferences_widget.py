@@ -1,7 +1,18 @@
 
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QGroupBox, QTextEdit, QLabel, QFileDialog, QGridLayout, QLineEdit, QSpacerItem, QSizePolicy
 
-from bup.gui import PreferencesStore
+from bup import __application_name__, __author__
+from bup.gui import BupPreferences
+
+
+class PreferencesLineEdit(QLineEdit):
+    def setText(self, s: (str, None)):
+        # tolerate None
+        if s is not None:
+            super().setText(s)
+
+    def text(self):
+        return super().text().strip()
 
 
 class PreferencesWidget(QWidget):
@@ -12,8 +23,8 @@ class PreferencesWidget(QWidget):
         # backup directory
         self.backup_directory_widget = QWidget()
         self.backup_directory_widget.setLayout(QHBoxLayout())
-        self.backup_directory_line_edit = QLineEdit()
-        self.backup_directory_line_edit.textChanged.connect(self.new_backup_directory)
+        self.backup_directory_line_edit = PreferencesLineEdit()
+        self.backup_directory_line_edit.textChanged.connect(self.backup_directory_changed)
         self.select_backup_directory_button = QPushButton("Select Backup Directory")
         self.select_backup_directory_button.clicked.connect(self.select_backup_directory)
         self.backup_directory_widget.layout().addWidget(QLabel("Backup Directory:"))
@@ -30,7 +41,8 @@ class PreferencesWidget(QWidget):
         self.aws_profile_widget = QWidget()
         self.aws_profile_widget.setLayout(QHBoxLayout())
         self.aws_profile_widget.layout().addWidget(QLabel("AWS Profile:"))
-        self.aws_profile_line_edit = QLineEdit()
+        self.aws_profile_line_edit = PreferencesLineEdit()
+        self.aws_profile_line_edit.textChanged.connect(self.aws_profile_changed)
         self.aws_profile_widget.layout().addWidget(self.aws_profile_line_edit)
         self.layout().addWidget(self.aws_profile_widget)
         or_label = QLabel("or")  # italicize "or"
@@ -39,35 +51,63 @@ class PreferencesWidget(QWidget):
         or_label.setFont(or_font)
         self.layout().addWidget(or_label)
         # access key ID and secret access key
-        # todo: do we need an AWS region?
         self.aws_key_widget = QWidget()
         self.aws_key_widget.setLayout(QHBoxLayout())
         self.aws_key_widget.layout().addWidget(QLabel("AWS Access Key ID:"))
-        self.aws_access_key_id_line_edit = QLineEdit()
+        self.aws_access_key_id_line_edit = PreferencesLineEdit()
+        self.aws_access_key_id_line_edit.textChanged.connect(self.aws_access_key_id_changed)
         self.aws_key_widget.layout().addWidget(self.aws_access_key_id_line_edit)
         self.aws_key_widget.layout().addWidget(QLabel("AWS Secret Access Key:"))
-        self.aws_secret_access_key_line_edit = QLineEdit()
-        self.aws_secret_access_key_line_edit.setEchoMode(QLineEdit.Password)
+        self.aws_secret_access_key_line_edit = PreferencesLineEdit()
+        self.aws_secret_access_key_line_edit.textChanged.connect(self.aws_secret_access_key_changed)
+        self.aws_secret_access_key_line_edit.setEchoMode(PreferencesLineEdit.Password)
         self.aws_key_widget.layout().addWidget(self.aws_secret_access_key_line_edit)
         self.aws_show_button = QPushButton("Show")
+        self.aws_show_button.clicked.connect(self.aws_secret_access_key_visible_clicked)
         self.aws_key_widget.layout().addWidget(self.aws_show_button)
         self.layout().addWidget(self.aws_key_widget)
         self.layout().addWidget(QLabel())  # space
+        # region
+        self.aws_region_widget = QWidget()
+        self.aws_region_widget.setLayout(QHBoxLayout())
+        self.aws_region_widget.layout().addWidget(QLabel("AWS Region:"))
+        self.aws_region_line_edit = PreferencesLineEdit()
+        self.aws_region_line_edit.textChanged.connect(self.aws_region_changed)
+        self.aws_region_widget.layout().addWidget(self.aws_region_line_edit)
+        self.layout().addWidget(self.aws_region_widget)
 
         self.layout().addStretch()  # bottom padding
 
         self.load_preferences()
 
     def load_preferences(self):
-        preferences = PreferencesStore()
-        if (backup_path := preferences.get_backup_directory()) is not None and len(backup_path.strip()) > 0:
-            self.backup_directory_line_edit.setText(str(backup_path))
+        preferences = BupPreferences(__application_name__, __author__)
+        self.backup_directory_line_edit.setText(preferences.backup_directory)
+        self.aws_profile_line_edit.setText(preferences.aws_profile)
+        self.aws_access_key_id_line_edit.setText(preferences.aws_access_key_id)
+        self.aws_secret_access_key_line_edit.setText(preferences.aws_secret_access_key)
+        self.aws_region_line_edit.setText(preferences.aws_region)
 
     def select_backup_directory(self):
         new_backup_directory = QFileDialog.getExistingDirectory(self, "Select Backup Directory")
         if new_backup_directory is not None and len(new_backup_directory) > 0:
             self.backup_directory_line_edit.setText(new_backup_directory)
 
-    def new_backup_directory(self):
-        gui_preferences = PreferencesStore()
-        gui_preferences.set_backup_directory(self.backup_directory_line_edit.text())
+    def backup_directory_changed(self):
+        BupPreferences(__application_name__, __author__).backup_directory = self.backup_directory_line_edit.text()
+
+    def aws_profile_changed(self):
+        BupPreferences(__application_name__, __author__).aws_profile = self.aws_profile_line_edit.text()
+
+    def aws_access_key_id_changed(self):
+        BupPreferences(__application_name__, __author__).aws_access_key_id = self.aws_access_key_id_line_edit.text()
+
+    def aws_secret_access_key_changed(self):
+        BupPreferences(__application_name__, __author__).aws_secret_access_key = self.aws_secret_access_key_line_edit.text()
+
+    def aws_secret_access_key_visible_clicked(self):
+        new_echo_mode = PreferencesLineEdit.Normal if self.aws_secret_access_key_line_edit.echoMode() == PreferencesLineEdit.Password else PreferencesLineEdit.Password
+        self.aws_secret_access_key_line_edit.setEchoMode(new_echo_mode)
+
+    def aws_region_changed(self):
+        BupPreferences(__application_name__, __author__).aws_region = self.aws_region_line_edit.text()

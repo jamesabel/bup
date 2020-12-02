@@ -10,6 +10,8 @@ pyqt5
 sqlitedict
 tobool
 attrs
+appdirs
+pref
 #
 # dev
 wheel

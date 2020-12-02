@@ -56,7 +56,7 @@ def pull_branches(repo_name: str, branches: Iterable, repo_dir: str):
             if not get_press_enter_to_exit().is_alive():
                 break
 
-            branch_name = branch.name
+            branch_name = branch.application_name
             print_log(f'git pull "{repo_name}" branch:"{branch_name}" to {repo_dir}')
             git_repo.git.checkout(branch_name)
             git_repo.git.pull()
