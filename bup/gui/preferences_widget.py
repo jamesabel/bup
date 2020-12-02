@@ -106,8 +106,12 @@ class PreferencesWidget(QWidget):
         BupPreferences(__application_name__, __author__).aws_secret_access_key = self.aws_secret_access_key_line_edit.text()
 
     def aws_secret_access_key_visible_clicked(self):
-        new_echo_mode = PreferencesLineEdit.Normal if self.aws_secret_access_key_line_edit.echoMode() == PreferencesLineEdit.Password else PreferencesLineEdit.Password
-        self.aws_secret_access_key_line_edit.setEchoMode(new_echo_mode)
+        if self.aws_secret_access_key_line_edit.echoMode() == PreferencesLineEdit.Password:
+            self.aws_show_button.setText("Hide")
+            self.aws_secret_access_key_line_edit.setEchoMode(PreferencesLineEdit.Normal)
+        else:
+            self.aws_show_button.setText("Show")
+            self.aws_secret_access_key_line_edit.setEchoMode(PreferencesLineEdit.Password)
 
     def aws_region_changed(self):
         BupPreferences(__application_name__, __author__).aws_region = self.aws_region_line_edit.text()
