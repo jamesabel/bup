@@ -2,7 +2,7 @@ from balsa import get_logger
 from pref import PrefDict, PrefOrderedSet
 from attr import attrib, attrs
 
-from bup import __application_name__
+from bup import __application_name__, __author__
 
 
 log = get_logger(__application_name__)
@@ -15,3 +15,7 @@ class BupPreferences(PrefDict):
     aws_access_key_id: str = attrib(default=None)
     aws_secret_access_key: str = attrib(default=None)
     aws_region: str = attrib(default=None)
+
+
+def get_preferences() -> BupPreferences:
+    return BupPreferences(__application_name__, __author__)

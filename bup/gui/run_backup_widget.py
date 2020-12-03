@@ -2,10 +2,12 @@ from enum import Enum
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QGroupBox, QHBoxLayout, QTextEdit
 
-from bup import BackupTypes, BupBase, backup_classes, __application_name__, __author__
-from bup.gui import BupPreferences
+from bup import BackupTypes, BupBase, S3Backup, DynamoDBBackup, GithubBackup
+from bup.gui import get_preferences
 
 max_text_lines = 100
+
+backup_classes = {BackupTypes.S3: S3Backup, BackupTypes.DynamoDB: DynamoDBBackup, BackupTypes.github: GithubBackup}
 
 
 class DisplayTypes(Enum):
@@ -24,7 +26,7 @@ class DisplayBox(QGroupBox):
         self.layout().addWidget(self.text_box)
         self.text = []
 
-    def append_text(self, s: str):
+    def append_text(self, s):
         self.text.append(s)
         if len(self.text) > max_text_lines:
             self.text.pop(0)  # FIFO
@@ -36,9 +38,9 @@ class DisplayBox(QGroupBox):
 
 
 class BackupWidget(QGroupBox):
-    def __init__(self, backup_type: BackupTypes, backup_engine: BupBase):
+    def __init__(self, backup_type: BackupTypes):
         super().__init__(backup_type.name)
-        self.backup_engine = backup_engine
+        self.backup_engine = None  # set after init
         self.setLayout(QVBoxLayout())
 
         self.display_boxes = {}
@@ -76,14 +78,17 @@ class RunBackupWidget(QWidget):
         self.status_widget.setLayout(self.status_layout)
         self.backup_status = {}
         self.backup_engines = {}
-        preferences = BupPreferences(__application_name__, __author__)
+        preferences = get_preferences()
         for backup_type in BackupTypes:
-            # todo: fill in options here
-            #engine = backup_classes[backup_type](preferences.backup_directory, preferences.aws_profile)
-            #self.backup_engines[backup_type] = print
-
-            self.backup_status[backup_type] = BackupWidget(backup_type, lambda x:x)  # todo: pass in the backup engine
+            self.backup_status[backup_type] = BackupWidget(backup_type)
             self.backup_status[backup_type].setLayout(QHBoxLayout())
+
+            self.backup_engines[backup_type] = backup_classes[backup_type](preferences.backup_directory,
+                                                                           self.backup_status[backup_type].display_boxes[DisplayTypes.log].append_text,
+                                                                           self.backup_status[backup_type].display_boxes[DisplayTypes.warnings].append_text,
+                                                                           self.backup_status[backup_type].display_boxes[DisplayTypes.errors].append_text,
+                                                                           aws_profile = preferences.aws_profile)
+            self.backup_status[backup_type].backup_engine = self.backup_engines[backup_type]
             self.status_layout.addWidget(self.backup_status[backup_type])
 
         # add all the widgets to the top level layout
@@ -91,10 +96,12 @@ class RunBackupWidget(QWidget):
         self.top_level_layout.addWidget(self.status_widget)
 
     def start(self):
-        pass
+        for backup_type in self.backup_engines:
+            self.backup_engines[backup_type].run()
 
     def pause(self):
         pass
 
     def stop(self):
-        pass
+        for backup_type in self.backup_engines:
+            self.backup_engines[backup_type].terminate()

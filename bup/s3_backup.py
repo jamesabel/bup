@@ -4,13 +4,10 @@ import re
 from pathlib import Path
 from multiprocessing import freeze_support
 
-from typeguard import typechecked
-
 from awsimple import S3Access
 from balsa import get_logger
-from pressenter2exit import PressEnter2ExitGUI
 
-from bup import __application_name__, __version__, print_log, BupBase
+from bup import __application_name__, __version__, print_log, BupBase, BackupTypes
 
 log = get_logger(__application_name__)
 
@@ -30,6 +27,8 @@ def get_dir_size(dir_path: Path):
 
 class S3Backup(BupBase):
 
+    backup_type = BackupTypes.S3
+
     def run(self):
 
         backup_directory = os.path.join(self.backup_directory, "s3")
@@ -48,13 +47,8 @@ class S3Backup(BupBase):
         buckets = s3_access.bucket_list()
         print(f"backing up {len(buckets)} buckets")
 
-        press_enter_to_exit = PressEnter2ExitGUI(title="S3 local backup")
-
         count = 0
         for bucket_name in buckets:
-
-            if not press_enter_to_exit.is_alive():
-                break
 
             # do the sync
             if self.excludes is not None and bucket_name in self.excludes:

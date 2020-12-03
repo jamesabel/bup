@@ -24,6 +24,6 @@ setup(
     packages=[__title__],
     package_data={__title__: [readme_file_path]},
     install_requires=["ismain", "balsa", "boto3", "typeguard", "hashy", "dictim", "awsimple", "pressenter2exit", "awscli", "GitPython", "github3.py", "sqlitedict", "tobool", "attrs",
-                      "appdirs", "pref"],
+                      "appdirs", "pref", "pyqt5"],
     classifiers=[],
 )

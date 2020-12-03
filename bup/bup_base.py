@@ -1,27 +1,20 @@
 from pathlib import Path
 from multiprocessing import Process
+from typing import Callable
 
-from balsa import get_logger
-
-from bup import __application_name__
-
-log = get_logger(__application_name__)
+from typeguard import typechecked
 
 
 class BupBase(Process):
 
-    def __init__(self, backup_directory: Path, excludes: list = None, dry_run: bool = False, aws_profile: (str, None) = None):
+    backup_type = None
+
+    def __init__(self, backup_directory: Path, info_out: Callable, warning_out: Callable, error_out: Callable, excludes: list = None, dry_run: bool = False, aws_profile: (str, None) = None):
         super().__init__()
         self.backup_directory: Path = backup_directory
         self.excludes: list = [] if excludes is None else excludes
         self.aws_profile = aws_profile
         self.dry_run: bool = dry_run
-
-    def info_out(self, s: str):
-        log.info(s)
-
-    def warning_out(self, s: str):
-        log.warning(s)
-
-    def error_out(self, s: str):
-        log.error(s)
+        self.info_out = info_out
+        self.warning_out = warning_out
+        self.error_out = error_out

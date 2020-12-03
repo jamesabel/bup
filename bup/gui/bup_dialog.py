@@ -1,10 +1,7 @@
-from enum import Enum
-from pathlib import Path
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTabWidget
 
-from PyQt5.QtWidgets import QDialog, QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QGroupBox, QTextEdit, QTabWidget
-
-from bup import __application_name__, __version__, BupBase, S3Backup, DynamoDBBackup, GithubBackup, BackupTypes
-from bup.gui import PreferencesWidget, BupPreferences, RunBackupWidget
+from bup import __application_name__, __version__
+from bup.gui import PreferencesWidget, RunBackupWidget
 
 
 class BupDialog(QDialog):

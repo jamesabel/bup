@@ -1,5 +1,4 @@
 import json
-from functools import lru_cache
 from typing import Iterable
 from pathlib import Path
 import shutil
@@ -8,18 +7,11 @@ import github3
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
 import appdirs
-from pressenter2exit import PressEnter2ExitGUI
 from balsa import get_logger
 
-from bup import __application_name__, __author__, print_log, BupBase
+from bup import __application_name__, __author__, print_log, BupBase, BackupTypes
 
 log = get_logger(__application_name__)
-
-
-# just instantiate once
-@lru_cache()
-def get_press_enter_to_exit() -> PressEnter2ExitGUI:
-    return PressEnter2ExitGUI(title="github local backup")
 
 
 def get_github_auth():
@@ -52,10 +44,6 @@ def pull_branches(repo_name: str, branches: Iterable, repo_dir: str):
 
     if git_repo is not None:
         for branch in branches:
-
-            if not get_press_enter_to_exit().is_alive():
-                break
-
             branch_name = branch.application_name
             print_log(f'git pull "{repo_name}" branch:"{branch_name}" to {repo_dir}')
             git_repo.git.checkout(branch_name)
@@ -64,15 +52,14 @@ def pull_branches(repo_name: str, branches: Iterable, repo_dir: str):
 
 class GithubBackup(BupBase):
 
+    backup_type = BackupTypes.github
+
     def github_local_backup(self):
 
         backup_dir = Path(self.backup_directory, "github")
 
         gh = get_github_auth()
         for github_repo in gh.repositories():
-
-            if not get_press_enter_to_exit().is_alive():
-                break
 
             repo_name = str(github_repo)
             repo_dir = Path(backup_dir, repo_name).absolute()

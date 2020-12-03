@@ -1,12 +1,6 @@
+from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QLabel, QFileDialog, QLineEdit
 
-from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QGroupBox, QTextEdit, QLabel, QFileDialog, QGridLayout, QLineEdit, QSpacerItem, QSizePolicy
-
-from bup import __application_name__, __author__
-from bup.gui import BupPreferences
-
-
-def get_preferences() -> BupPreferences:
-    return BupPreferences(__application_name__, __author__)
+from bup.gui import get_preferences
 
 
 class PreferencesLineEdit(QLineEdit):
