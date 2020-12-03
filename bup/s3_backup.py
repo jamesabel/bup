@@ -7,7 +7,7 @@ from multiprocessing import freeze_support
 from awsimple import S3Access
 from balsa import get_logger
 
-from bup import __application_name__, __version__, print_log, BupBase, BackupTypes
+from bup import __application_name__, __version__, BupBase, BackupTypes
 
 log = get_logger(__application_name__)
 
@@ -45,16 +45,16 @@ class S3Backup(BupBase):
         ls_re = re.compile(r"TotalObjects:([0-9]+)TotalSize:([0-9]+)")
 
         buckets = s3_access.bucket_list()
-        print(f"backing up {len(buckets)} buckets")
+        self.info_out(f"backing up {len(buckets)} buckets")
 
         count = 0
         for bucket_name in buckets:
 
             # do the sync
             if self.excludes is not None and bucket_name in self.excludes:
-                print_log(f"excluding bucket : {bucket_name}")
+                self.info_out(f"excluding bucket : {bucket_name}")
             else:
-                print_log(f"bucket : {bucket_name}")
+                self.info_out(f"bucket : {bucket_name}")
 
                 aws_cli_path = f'"{os.path.abspath(os.path.join("venv", "Scripts", "aws"))}"'
 

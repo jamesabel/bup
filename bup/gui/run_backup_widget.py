@@ -1,9 +1,10 @@
 from enum import Enum
+from pathlib import Path
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QGroupBox, QHBoxLayout, QTextEdit
 
-from bup import BackupTypes, BupBase, S3Backup, DynamoDBBackup, GithubBackup
-from bup.gui import get_preferences
+from bup import BackupTypes, S3Backup, DynamoDBBackup, GithubBackup
+from bup.gui import get_preferences, ExclusionPreferences
 
 max_text_lines = 100
 
@@ -18,6 +19,9 @@ class DisplayTypes(Enum):
 
 
 class DisplayBox(QGroupBox):
+    """
+    Display for lines of text that can be appended to.
+    """
     def __init__(self, name: str, read_only: bool):
         super().__init__(name)
         self.setLayout(QVBoxLayout())
@@ -38,7 +42,11 @@ class DisplayBox(QGroupBox):
 
 
 class BackupWidget(QGroupBox):
+    """
+    GUI for a particular backup type (e.g. S3, DynamoDB, github).  Status is read-only, but exclusions are edited here.
+    """
     def __init__(self, backup_type: BackupTypes):
+        self.backup_type = backup_type
         super().__init__(backup_type.name)
         self.backup_engine = None  # set after init
         self.setLayout(QVBoxLayout())
@@ -47,6 +55,25 @@ class BackupWidget(QGroupBox):
         for display_type in DisplayTypes:
             self.display_boxes[display_type] = DisplayBox(display_type.value, display_type is not DisplayTypes.exclusions)
             self.layout().addWidget(self.display_boxes[display_type])
+            if display_type == DisplayTypes.exclusions:
+                # read exclusions into the DB
+                exclusions = ExclusionPreferences(self.backup_type.name)
+                self.display_boxes[display_type].text_box.setText("\n".join(exclusions.get()))
+                self.display_boxes[display_type].text_box.textChanged.connect(self.exclusions)
+            else:
+                self.display_boxes[display_type].text_box.setReadOnly(True)
+
+    def exclusions(self):
+        """
+        write exclusions out to the DB
+        """
+        exclusions = ExclusionPreferences(self.backup_type.name)
+        line_list = []
+        for line in self.display_boxes[DisplayTypes.exclusions].text_box.toPlainText().splitlines():
+            line = line.strip()
+            if len(line) > 0:
+                line_list.append(line)
+        exclusions.set(line_list)
 
 
 class RunBackupWidget(QWidget):
@@ -83,11 +110,15 @@ class RunBackupWidget(QWidget):
             self.backup_status[backup_type] = BackupWidget(backup_type)
             self.backup_status[backup_type].setLayout(QHBoxLayout())
 
-            self.backup_engines[backup_type] = backup_classes[backup_type](preferences.backup_directory,
+            self.backup_engines[backup_type] = backup_classes[backup_type](Path(preferences.backup_directory),
                                                                            self.backup_status[backup_type].display_boxes[DisplayTypes.log].append_text,
                                                                            self.backup_status[backup_type].display_boxes[DisplayTypes.warnings].append_text,
                                                                            self.backup_status[backup_type].display_boxes[DisplayTypes.errors].append_text,
-                                                                           aws_profile = preferences.aws_profile)
+                                                                           ExclusionPreferences(backup_type.name).get(),
+                                                                           False,
+                                                                           preferences.aws_profile
+                                                                           )
+
             self.backup_status[backup_type].backup_engine = self.backup_engines[backup_type]
             self.status_layout.addWidget(self.backup_status[backup_type])
 

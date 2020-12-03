@@ -19,3 +19,8 @@ class BupPreferences(PrefDict):
 
 def get_preferences() -> BupPreferences:
     return BupPreferences(__application_name__, __author__)
+
+
+class ExclusionPreferences(PrefOrderedSet):
+    def __init__(self, exclusion_type: str):
+        super().__init__(__application_name__, __author__, f"exclusions_{exclusion_type}")

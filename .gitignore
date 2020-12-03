@@ -132,3 +132,4 @@ dmypy.json
 .idea/
 # the actual license file is LICENSE (no .txt)
 LICENSE.txt
+temp/

@@ -1,4 +1,4 @@
-from .preferences import get_preferences
+from .preferences import get_preferences, ExclusionPreferences
 from .preferences_widget import PreferencesWidget
 from .run_backup_widget import RunBackupWidget
 from .bup_dialog import BupDialog
