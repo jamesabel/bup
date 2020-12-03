@@ -5,6 +5,10 @@ from bup import __application_name__, __author__
 from bup.gui import BupPreferences
 
 
+def get_preferences() -> BupPreferences:
+    return BupPreferences(__application_name__, __author__)
+
+
 class PreferencesLineEdit(QLineEdit):
     def setText(self, s: (str, None)):
         # tolerate None
@@ -81,7 +85,7 @@ class PreferencesWidget(QWidget):
         self.load_preferences()
 
     def load_preferences(self):
-        preferences = BupPreferences(__application_name__, __author__)
+        preferences = get_preferences()
         self.backup_directory_line_edit.setText(preferences.backup_directory)
         self.aws_profile_line_edit.setText(preferences.aws_profile)
         self.aws_access_key_id_line_edit.setText(preferences.aws_access_key_id)
@@ -94,16 +98,16 @@ class PreferencesWidget(QWidget):
             self.backup_directory_line_edit.setText(new_backup_directory)
 
     def backup_directory_changed(self):
-        BupPreferences(__application_name__, __author__).backup_directory = self.backup_directory_line_edit.text()
+        get_preferences().backup_directory = self.backup_directory_line_edit.text()
 
     def aws_profile_changed(self):
-        BupPreferences(__application_name__, __author__).aws_profile = self.aws_profile_line_edit.text()
+        get_preferences().aws_profile = self.aws_profile_line_edit.text()
 
     def aws_access_key_id_changed(self):
-        BupPreferences(__application_name__, __author__).aws_access_key_id = self.aws_access_key_id_line_edit.text()
+        get_preferences().aws_access_key_id = self.aws_access_key_id_line_edit.text()
 
     def aws_secret_access_key_changed(self):
-        BupPreferences(__application_name__, __author__).aws_secret_access_key = self.aws_secret_access_key_line_edit.text()
+        get_preferences().aws_secret_access_key = self.aws_secret_access_key_line_edit.text()
 
     def aws_secret_access_key_visible_clicked(self):
         if self.aws_secret_access_key_line_edit.echoMode() == PreferencesLineEdit.Password:
@@ -114,4 +118,4 @@ class PreferencesWidget(QWidget):
             self.aws_secret_access_key_line_edit.setEchoMode(PreferencesLineEdit.Password)
 
     def aws_region_changed(self):
-        BupPreferences(__application_name__, __author__).aws_region = self.aws_region_line_edit.text()
+        get_preferences().aws_region = self.aws_region_line_edit.text()
