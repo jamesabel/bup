@@ -94,8 +94,6 @@ class RunBackupWidget(QWidget):
 
         self.start_button = QPushButton("Start")
         self.start_button.clicked.connect(self.start)
-        self.pause_button = QPushButton("Pause")
-        self.pause_button.clicked.connect(self.pause)
         self.stop_button = QPushButton("Stop")
         self.stop_button.clicked.connect(self.stop)
 
@@ -131,9 +129,6 @@ class RunBackupWidget(QWidget):
     def start(self):
         for backup_type in self.backup_engines:
             self.backup_engines[backup_type].start()
-
-    def pause(self):
-        pass
 
     def stop(self):
         for backup_type in self.backup_engines:
