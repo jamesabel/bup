@@ -1,4 +1,5 @@
 from .__version__ import __application_name__, __version__, __description__, __author__
+from .ui_types import UITypes
 from .print_log import print_log
 from .arguments import arguments
 from .preferences import BupPreferences, get_preferences, ExclusionPreferences

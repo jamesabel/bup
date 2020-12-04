@@ -1,6 +1,6 @@
 from balsa import Balsa, get_logger
 
-from bup import __application_name__, __author__, __version__, arguments, S3Backup, DynamoDBBackup, GithubBackup
+from bup import __application_name__, __author__, __version__, S3Backup, DynamoDBBackup, GithubBackup, get_preferences, UITypes, ExclusionPreferences, BackupTypes
 
 log = get_logger(__application_name__)
 
@@ -14,34 +14,34 @@ def cli_main(args):
     log.info(f"__author__={__author__}")
     log.info(f"__version__={__version__}")
 
-    if args.exclude is None:
-        exclusion_list = []
-    else:
-        exclusion_list = args.exclude.split()
+    preferences = get_preferences(UITypes.cli)
+    preferences.backup_directory = args.path  # backup classes will read the preferences DB directly
+    preferences.github_token = args.token
+    preferences.aws_profile = args.profile
 
-    if args.exclude_file is not None:
-        with open(args.exclude_file) as f:
-            for file_line in f:
-                if file_line is not None:
-                    file_line = file_line.strip()
-                    if len(file_line) > 0 and file_line[0] != "#":
-                        exclusion_list.append(file_line)
-    log.debug(f"exclusion_list={exclusion_list}")
+    # If setting the exclusions, just do it for one backup type at a time.  The values are stored for subsequent runs.
+    if args.exclude is not None and len(args.exclude) > 0:
+        if args.s3:
+            ExclusionPreferences(BackupTypes.S3.name).set(args.exclude)
+        elif args.dynamodb:
+            ExclusionPreferences(BackupTypes.DynamoDB.name).set(args.exclude)
+        elif args.github:
+            ExclusionPreferences(BackupTypes.github.name).set(args.exclude)
 
     did_something = False
     dynamodb_local_backup = None
     s3_local_backup = None
     github_local_backup = None
     if args.s3 or args.aws:
-        s3_local_backup = S3Backup(args.path, args.profile, args.dry_run, exclusion_list)
+        s3_local_backup = S3Backup(log.info, log.warning, log.error)
         s3_local_backup.start()
         did_something = True
     if args.dynamodb or args.aws:
-        dynamodb_local_backup = DynamoDBBackup(args.path, args.profile, args.dry_run, exclusion_list)
+        dynamodb_local_backup = DynamoDBBackup(log.info, log.warning, log.error)
         dynamodb_local_backup.start()
         did_something = True
     if args.github:
-        github_local_backup = GithubBackup(args.path, dry_run=args.dry_run)
+        github_local_backup = GithubBackup(log.info, log.warning, log.error)
         github_local_backup.start()
         did_something = True
     if not did_something:

@@ -2,7 +2,7 @@ from balsa import get_logger
 from pref import PrefDict, PrefOrderedSet
 from attr import attrib, attrs
 
-from bup import __application_name__, __author__
+from bup import __application_name__, __author__, UITypes
 
 
 log = get_logger(__application_name__)
@@ -19,8 +19,8 @@ class BupPreferences(PrefDict):
     verbose: bool = attrib(default=None)
 
 
-def get_preferences() -> BupPreferences:
-    return BupPreferences(__application_name__, __author__)
+def get_preferences(ui_type: UITypes) -> BupPreferences:
+    return BupPreferences(__application_name__, __author__, f"{ui_type.name}_preferences")
 
 
 class ExclusionPreferences(PrefOrderedSet):

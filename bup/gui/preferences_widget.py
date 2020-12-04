@@ -1,6 +1,10 @@
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QLabel, QFileDialog, QLineEdit, QCheckBox
 
-from bup import get_preferences
+from bup import get_preferences, UITypes
+
+
+def get_gui_preferences():
+    return get_preferences(UITypes.gui)
 
 
 class PreferencesLineEdit(QLineEdit):
@@ -93,7 +97,7 @@ class PreferencesWidget(QWidget):
         self.load_preferences()
 
     def load_preferences(self):
-        preferences = get_preferences()
+        preferences = get_gui_preferences()
         self.backup_directory_line_edit.setText(preferences.backup_directory)
         self.aws_profile_line_edit.setText(preferences.aws_profile)
         self.aws_access_key_id_line_edit.setText(preferences.aws_access_key_id)
@@ -101,7 +105,7 @@ class PreferencesWidget(QWidget):
         self.aws_region_line_edit.setText(preferences.aws_region)
         self.github_token_line_edit.setText(preferences.github_token)
         v = preferences.verbose
-        self.verbose_check_box.setChecked(v)
+        self.verbose_check_box.setChecked(bool(v))  # None translates to False
 
     def select_backup_directory(self):
         new_backup_directory = QFileDialog.getExistingDirectory(self, "Select Backup Directory")
@@ -109,16 +113,16 @@ class PreferencesWidget(QWidget):
             self.backup_directory_line_edit.setText(new_backup_directory)
 
     def backup_directory_changed(self):
-        get_preferences().backup_directory = self.backup_directory_line_edit.text()
+        get_gui_preferences().backup_directory = self.backup_directory_line_edit.text()
 
     def aws_profile_changed(self):
-        get_preferences().aws_profile = self.aws_profile_line_edit.text()
+        get_gui_preferences().aws_profile = self.aws_profile_line_edit.text()
 
     def aws_access_key_id_changed(self):
-        get_preferences().aws_access_key_id = self.aws_access_key_id_line_edit.text()
+        get_gui_preferences().aws_access_key_id = self.aws_access_key_id_line_edit.text()
 
     def aws_secret_access_key_changed(self):
-        get_preferences().aws_secret_access_key = self.aws_secret_access_key_line_edit.text()
+        get_gui_preferences().aws_secret_access_key = self.aws_secret_access_key_line_edit.text()
 
     def aws_secret_access_key_visible_clicked(self):
         if self.aws_secret_access_key_line_edit.echoMode() == PreferencesLineEdit.Password:
@@ -129,10 +133,10 @@ class PreferencesWidget(QWidget):
             self.aws_secret_access_key_line_edit.setEchoMode(PreferencesLineEdit.Password)
 
     def aws_region_changed(self):
-        get_preferences().aws_region = self.aws_region_line_edit.text()
+        get_gui_preferences().aws_region = self.aws_region_line_edit.text()
 
     def github_token_changed(self):
-        get_preferences().github_token = self.github_token_line_edit.text()
+        get_gui_preferences().github_token = self.github_token_line_edit.text()
 
     def verbose_clicked(self):
-        get_preferences().verbose = self.verbose_check_box.isChecked()
+        get_gui_preferences().verbose = self.verbose_check_box.isChecked()
