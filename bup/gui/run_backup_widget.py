@@ -26,6 +26,7 @@ class DisplayBox(QGroupBox):
     """
     Display for lines of text that can be appended to.
     """
+
     def __init__(self, name: str, read_only: bool):
         super().__init__(name)
         self.setLayout(QVBoxLayout())
@@ -49,10 +50,10 @@ class BackupWidget(QGroupBox):
     """
     GUI for a particular backup type (e.g. S3, DynamoDB, github).  Status is read-only, but exclusions are edited here.
     """
+
     def __init__(self, backup_type: BackupTypes):
         self.backup_type = backup_type
         super().__init__(backup_type.name)
-        self.backup_engine = None  # set after init
         self.setLayout(QVBoxLayout())
 
         self.display_boxes = {}
@@ -98,7 +99,6 @@ class RunBackupWidget(QWidget):
         self.stop_button.clicked.connect(self.stop)
 
         self.controls_layout.addWidget(self.start_button)
-        self.controls_layout.addWidget(self.pause_button)
         self.controls_layout.addWidget(self.stop_button)
 
         # status
@@ -114,12 +114,9 @@ class RunBackupWidget(QWidget):
             self.backup_status[backup_type] = BackupWidget(backup_type)
             self.backup_status[backup_type].setLayout(QHBoxLayout())
 
-            self.backup_engines[backup_type] = backup_classes[backup_type](self.backup_status[backup_type].display_boxes[DisplayTypes.log].append_text,
-                                                                           self.backup_status[backup_type].display_boxes[DisplayTypes.warnings].append_text,
-                                                                           self.backup_status[backup_type].display_boxes[DisplayTypes.errors].append_text,
-                                                                           )
+            d = self.backup_status[backup_type].display_boxes
+            self.backup_engines[backup_type] = backup_classes[backup_type](d[DisplayTypes.log].append_text, d[DisplayTypes.warnings].append_text, d[DisplayTypes.errors].append_text)
 
-            self.backup_status[backup_type].backup_engine = self.backup_engines[backup_type]
             self.status_layout.addWidget(self.backup_status[backup_type])
 
         # add all the widgets to the top level layout
