@@ -15,6 +15,8 @@ class BupPreferences(PrefDict):
     aws_access_key_id: str = attrib(default=None)
     aws_secret_access_key: str = attrib(default=None)
     aws_region: str = attrib(default=None)
+    github_token: str = attrib(default=None)
+    verbose: bool = attrib(default=None)
 
 
 def get_preferences() -> BupPreferences:

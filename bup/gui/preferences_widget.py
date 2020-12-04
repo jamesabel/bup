@@ -1,6 +1,6 @@
-from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QLabel, QFileDialog, QLineEdit
+from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QLabel, QFileDialog, QLineEdit, QCheckBox
 
-from bup.gui import get_preferences
+from bup import get_preferences
 
 
 class PreferencesLineEdit(QLineEdit):
@@ -74,6 +74,20 @@ class PreferencesWidget(QWidget):
         self.aws_region_widget.layout().addWidget(self.aws_region_line_edit)
         self.layout().addWidget(self.aws_region_widget)
 
+        # github
+        self.github_widget = QWidget()
+        self.github_widget.setLayout(QHBoxLayout())
+        self.github_widget.layout().addWidget(QLabel("github token:"))
+        self.github_token_line_edit = PreferencesLineEdit()
+        self.github_token_line_edit.textChanged.connect(self.github_token_changed)
+        self.github_widget.layout().addWidget(self.github_token_line_edit)
+        self.layout().addWidget(self.github_widget)
+
+        # verbose
+        self.verbose_check_box = QCheckBox("Verbose")
+        self.verbose_check_box.clicked.connect(self.verbose_clicked)
+        self.layout().addWidget(self.verbose_check_box)
+
         self.layout().addStretch()  # bottom padding
 
         self.load_preferences()
@@ -85,6 +99,9 @@ class PreferencesWidget(QWidget):
         self.aws_access_key_id_line_edit.setText(preferences.aws_access_key_id)
         self.aws_secret_access_key_line_edit.setText(preferences.aws_secret_access_key)
         self.aws_region_line_edit.setText(preferences.aws_region)
+        self.github_token_line_edit.setText(preferences.github_token)
+        v = preferences.verbose
+        self.verbose_check_box.setChecked(v)
 
     def select_backup_directory(self):
         new_backup_directory = QFileDialog.getExistingDirectory(self, "Select Backup Directory")
@@ -113,3 +130,9 @@ class PreferencesWidget(QWidget):
 
     def aws_region_changed(self):
         get_preferences().aws_region = self.aws_region_line_edit.text()
+
+    def github_token_changed(self):
+        get_preferences().github_token = self.github_token_line_edit.text()
+
+    def verbose_clicked(self):
+        get_preferences().verbose = self.verbose_check_box.isChecked()

@@ -1,40 +1,19 @@
-import json
 from typing import Iterable
 from pathlib import Path
 import shutil
+from typing import Callable
 
 import github3
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
-import appdirs
 from balsa import get_logger
 
-from bup import __application_name__, __author__, print_log, BupBase, BackupTypes
+from bup import __application_name__, BupBase, BackupTypes, get_preferences
 
 log = get_logger(__application_name__)
 
 
-def get_github_auth():
-
-    token_string = "token"
-
-    credentials_dir = Path(appdirs.user_config_dir(__application_name__, __author__))
-    credentials_dir.mkdir(parents=True, exist_ok=True)
-    credentials_file_path = Path(credentials_dir, "github_credentials.json")
-
-    if not credentials_file_path.exists():
-        token = input("github token:").strip()
-        credentials_file_path.write_text(json.dumps({token_string: token}, indent=4))
-
-    credentials = json.loads(credentials_file_path.read_text())
-    token = credentials.get(token_string)
-    assert token is not None and len(token) > 0
-    gh = github3.login(token=token)
-
-    return gh
-
-
-def pull_branches(repo_name: str, branches: Iterable, repo_dir: str):
+def pull_branches(repo_name: str, branches: Iterable, repo_dir: str, log_function: Callable):
 
     git_repo = None
     try:
@@ -45,7 +24,7 @@ def pull_branches(repo_name: str, branches: Iterable, repo_dir: str):
     if git_repo is not None:
         for branch in branches:
             branch_name = branch.application_name
-            print_log(f'git pull "{repo_name}" branch:"{branch_name}" to {repo_dir}')
+            log_function(f'git pull "{repo_name}" branch:"{branch_name}" to {repo_dir}')
             git_repo.git.checkout(branch_name)
             git_repo.git.pull()
 
@@ -54,11 +33,12 @@ class GithubBackup(BupBase):
 
     backup_type = BackupTypes.github
 
-    def github_local_backup(self):
+    def run(self):
 
-        backup_dir = Path(self.backup_directory, "github")
+        preferences = get_preferences()
 
-        gh = get_github_auth()
+        backup_dir = Path(preferences.backup_directory, "github")
+        gh = github3.login(token=preferences.github_token)
         for github_repo in gh.repositories():
 
             repo_name = str(github_repo)
@@ -69,11 +49,11 @@ class GithubBackup(BupBase):
             pull_success = False
             if repo_dir.exists():
                 try:
-                    pull_branches(repo_name, branches, repo_dir)
+                    pull_branches(repo_name, branches, repo_dir, self.info_out)
                     pull_success = True
                 except GitCommandError as e:
                     log.info(e)
-                    print_log(f'could not pull "{repo_dir}" - will try to start over and do a clone of "{repo_name}"')
+                    self.warning_out(f'could not pull "{repo_dir}" - will try to start over and do a clone of "{repo_name}"')
 
             # new to us - clone the repo
             if not pull_success:
@@ -81,9 +61,9 @@ class GithubBackup(BupBase):
                     if repo_dir.exists():
                         shutil.rmtree(repo_dir)
 
-                    print_log(f'git clone "{repo_name}" to "{repo_dir}"')
+                    self.info_out(f'git clone "{repo_name}" to "{repo_dir}"')
 
                     Repo.clone_from(github_repo.clone_url, repo_dir)
-                    pull_branches(repo_name, branches, repo_dir)
+                    pull_branches(repo_name, branches, repo_dir, self.info_out)
                 except PermissionError as e:
                     log.warning(f"{repo_name} : {e}")

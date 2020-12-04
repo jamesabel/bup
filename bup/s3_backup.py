@@ -7,7 +7,7 @@ from multiprocessing import freeze_support
 from awsimple import S3Access
 from balsa import get_logger
 
-from bup import __application_name__, __version__, BupBase, BackupTypes
+from bup import __application_name__, __version__, BupBase, BackupTypes, get_preferences, ExclusionPreferences
 
 log = get_logger(__application_name__)
 
@@ -31,13 +31,16 @@ class S3Backup(BupBase):
 
     def run(self):
 
-        backup_directory = os.path.join(self.backup_directory, "s3")
+        preferences = get_preferences()
+        dry_run = False
+
+        backup_directory = os.path.join(preferences.backup_directory, "s3")
 
         os.makedirs(backup_directory, exist_ok=True)
 
         log.info(f"{__application_name__} : {__version__}")
 
-        s3_access = S3Access(profile_name=self.aws_profile)
+        s3_access = S3Access(profile_name=preferences.aws_profile)
 
         decoding = "utf-8"
 
@@ -48,10 +51,11 @@ class S3Backup(BupBase):
         self.info_out(f"backing up {len(buckets)} buckets")
 
         count = 0
+        excludes = ExclusionPreferences(BackupTypes.S3.name).get()
         for bucket_name in buckets:
 
             # do the sync
-            if self.excludes is not None and bucket_name in self.excludes:
+            if excludes is not None and bucket_name in excludes:
                 self.info_out(f"excluding bucket : {bucket_name}")
             else:
                 self.info_out(f"bucket : {bucket_name}")
@@ -63,7 +67,7 @@ class S3Backup(BupBase):
                 s3_bucket_path = f"s3://{bucket_name}"
                 # Don't use --delete.  We want to keep 'old' files locally.
                 sync_command_line = [aws_cli_path, "s3", "sync", s3_bucket_path, str(destination.absolute())]
-                if self.dry_run:
+                if dry_run:
                     sync_command_line.append("--dryrun")
                 sync_command_line_str = " ".join(sync_command_line)
                 log.info(sync_command_line_str)

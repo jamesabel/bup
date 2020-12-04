@@ -4,7 +4,7 @@ from pathlib import Path
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QGroupBox, QHBoxLayout, QTextEdit
 
 from bup import BackupTypes, S3Backup, DynamoDBBackup, GithubBackup
-from bup.gui import get_preferences, ExclusionPreferences
+from bup import get_preferences, ExclusionPreferences
 
 max_text_lines = 100
 
@@ -105,18 +105,16 @@ class RunBackupWidget(QWidget):
         self.status_widget.setLayout(self.status_layout)
         self.backup_status = {}
         self.backup_engines = {}
+
         preferences = get_preferences()
+
         for backup_type in BackupTypes:
             self.backup_status[backup_type] = BackupWidget(backup_type)
             self.backup_status[backup_type].setLayout(QHBoxLayout())
 
-            self.backup_engines[backup_type] = backup_classes[backup_type](Path(preferences.backup_directory),
-                                                                           self.backup_status[backup_type].display_boxes[DisplayTypes.log].append_text,
+            self.backup_engines[backup_type] = backup_classes[backup_type](self.backup_status[backup_type].display_boxes[DisplayTypes.log].append_text,
                                                                            self.backup_status[backup_type].display_boxes[DisplayTypes.warnings].append_text,
                                                                            self.backup_status[backup_type].display_boxes[DisplayTypes.errors].append_text,
-                                                                           ExclusionPreferences(backup_type.name).get(),
-                                                                           False,
-                                                                           preferences.aws_profile
                                                                            )
 
             self.backup_status[backup_type].backup_engine = self.backup_engines[backup_type]
