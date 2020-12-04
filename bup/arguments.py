@@ -27,8 +27,12 @@ def arguments():
         parser.add_argument("-s", "--s3", action="store_true", default=False, help="backup AWS S3")
         parser.add_argument("-d", "--dynamodb", action="store_true", default=False, help="backup AWS DynamoDB")
         parser.add_argument("-g", "--github", action="store_true", default=False, help="backup github")
-        parser.add_argument("-e", "--exclude", nargs="*",
-                            help="exclude these AWS S3 buckets and/or tables (only do one backup type at a time when setting exclusions - these values are saved and used on subsequent runs)")
+        parser.add_argument(
+            "-e",
+            "--exclude",
+            nargs="*",
+            help="exclude these AWS S3 buckets and/or tables (only do one backup type at a time when setting exclusions - these values are saved and used on subsequent runs)",
+        )
         parser.add_argument("-p", "--profile", help="AWS profile (uses the default AWS profile if not given)")
         parser.add_argument("-r", "--region", help="AWS region (uses the default AWS region if not given)")
         parser.add_argument("-t", "--token", help="github token (saved and used on subsequent runs)")

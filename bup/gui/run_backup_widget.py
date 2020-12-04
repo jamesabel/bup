@@ -38,7 +38,7 @@ class DisplayBox(QGroupBox):
         self.text.append(f"{get_local_time_string()} {s}")
         if len(self.text) > max_text_lines:
             self.text.pop(0)  # FIFO
-        self.text_box.setText(f"\n".join(reversed(self.text)))
+        self.text_box.setText("\n".join(reversed(self.text)))
 
     def clear_text(self):
         self.text = []

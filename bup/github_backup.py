@@ -63,7 +63,7 @@ class GithubBackup(BupBase):
                         pull_success = True
                         pull_count += 1
                     except GitCommandError as e:
-                        self.warning_out(f'could not pull "{repo_dir}" - will try to start over and do a clone of "{repo_owner_and_name}"')
+                        self.warning_out(f'could not pull "{repo_dir}" - will try to start over and do a clone of "{repo_owner_and_name} {e}"')
 
                 # new to us - clone the repo
                 if not pull_success:

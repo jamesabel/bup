@@ -73,7 +73,7 @@ class S3Backup(BupBase):
                 try:
                     sync_result = subprocess.run(sync_command_line_str, stdout=subprocess.PIPE, shell=True)
                 except FileNotFoundError as e:
-                    self.error_out(f'error executing "{" ".join(sync_command_line)}"')
+                    self.error_out(f'error executing {" ".join(sync_command_line)} {e}')
                     return
 
                 for line in sync_result.stdout.decode(decoding).splitlines():
