@@ -25,7 +25,7 @@ class DynamoDBBackup(BupBase):
             cache_life = timedelta(days=7).total_seconds()
 
             if self.excludes is not None and table_name in self.excludes:
-                self.info_out(f"\rexcluding {table_name}")
+                self.info_out(f"excluding {table_name}")
             else:
                 table = DynamoDBAccess(table_name, cache_life=cache_life)
                 table_contents = table.scan_table_cached()

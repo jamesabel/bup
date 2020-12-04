@@ -128,7 +128,7 @@ class RunBackupWidget(QWidget):
 
     def start(self):
         for backup_type in self.backup_engines:
-            self.backup_engines[backup_type].run()
+            self.backup_engines[backup_type].start()
 
     def pause(self):
         pass
