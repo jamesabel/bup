@@ -38,8 +38,6 @@ class S3Backup(BupBase):
 
         os.makedirs(backup_directory, exist_ok=True)
 
-        log.info(f"{__application_name__} : {__version__}")
-
         s3_access = S3Access(profile_name=preferences.aws_profile)
 
         decoding = "utf-8"
@@ -55,7 +53,7 @@ class S3Backup(BupBase):
         for bucket_name in buckets:
 
             # do the sync
-            if exclusions is not None and bucket_name in exclusions:
+            if bucket_name in exclusions:
                 self.info_out(f"excluding {bucket_name}")
             else:
                 self.info_out(f"{bucket_name}")
@@ -75,8 +73,7 @@ class S3Backup(BupBase):
                 try:
                     sync_result = subprocess.run(sync_command_line_str, stdout=subprocess.PIPE, shell=True)
                 except FileNotFoundError as e:
-                    log.critical(e)
-                    log.critical(f'error executing "{" ".join(sync_command_line)}"')
+                    self.error_out(f'error executing "{" ".join(sync_command_line)}"')
                     return
 
                 for line in sync_result.stdout.decode(decoding).splitlines():
@@ -93,19 +90,19 @@ class S3Backup(BupBase):
                 s3_object_count = int(ls_parsed.group(1))
                 s3_total_size = int(ls_parsed.group(2))
                 local_size, local_count = get_dir_size(destination)
+
                 # rough check that the sync worked
                 if s3_total_size > local_size:
                     # we're missing files
                     message = "not all files backed up"
-                    error_routine = log.error
+                    output_routine = self.error_out
                 elif s3_total_size != local_size:
-                    # don't compare number of files since aws s3 sync does not copy files of zero size
+                    # Compare size, not number of files, since aws s3 sync does not copy files of zero size.
                     message = "mismatch"
-                    error_routine = log.warning
+                    output_routine = self.warning_out
                 else:
                     message = "match"
-                    error_routine = log.info
-                if error_routine is not None:
-                    error_routine(f"{bucket_name} : {message} (s3_count={s3_object_count}, local_count={local_count}; s3_total_size={s3_total_size}, local_size={local_size})")
+                    output_routine = log.info
+                output_routine(f"{bucket_name} : {message} (s3_count={s3_object_count}, local_count={local_count}; s3_total_size={s3_total_size}, local_size={local_size})")
 
-        self.info_out(f"{count} buckets, {count} backed up, {len(exclusions)} excluded")
+        self.info_out(f"{len(buckets)} buckets, {count} backed up, {len(exclusions)} excluded")
