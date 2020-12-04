@@ -14,7 +14,7 @@ class DynamoDBBackup(BupBase):
     def run(self):
         preferences = get_preferences()
         backup_directory = preferences.backup_directory
-        excludes = ExclusionPreferences(self.backup_type.name).get()
+        exclusions = ExclusionPreferences(self.backup_type.name).get()
         dry_run = False
 
         tables = DynamoDBAccess(profile_name=preferences.aws_profile).get_table_names()
@@ -28,7 +28,7 @@ class DynamoDBBackup(BupBase):
             # awsimple will update immediately if number of table rows changes, but backup from scratch every so often to be safe
             cache_life = timedelta(days=7).total_seconds()
 
-            if excludes is not None and table_name in excludes:
+            if table_name in exclusions:
                 self.info_out(f"excluding {table_name}")
             else:
                 table = DynamoDBAccess(table_name, cache_life=cache_life)
@@ -39,4 +39,5 @@ class DynamoDBBackup(BupBase):
                     with Path(dir_path, f"{table_name}.pickle").open("wb") as f:
                         pickle.dump(table_contents, f)
                         count += 1
-        self.info_out(f"backed up {count} tables")
+
+        self.info_out(f"{count} tables, {count} backed up, {len(exclusions)} excluded")

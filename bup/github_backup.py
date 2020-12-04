@@ -36,15 +36,20 @@ class GithubBackup(BupBase):
     def run(self):
 
         preferences = get_preferences()
-        excludes = ExclusionPreferences(BackupTypes.github.name).get()
+        exclusions = ExclusionPreferences(BackupTypes.github.name).get()
 
         backup_dir = Path(preferences.backup_directory, "github")
         gh = github3.login(token=preferences.github_token)
-        for github_repo in gh.repositories():
+        repositories = list(gh.repositories())
+
+        clone_count = 0
+        pull_count = 0
+
+        for github_repo in repositories:
 
             repo_owner_and_name = str(github_repo)
             repo_name = repo_owner_and_name.split("/")[-1]
-            if any([e == repo_name for e in excludes]):
+            if any([e == repo_name for e in exclusions]):
                 self.info_out(f"{repo_owner_and_name} excluded")
             else:
                 repo_dir = Path(backup_dir, repo_owner_and_name).absolute()
@@ -56,8 +61,8 @@ class GithubBackup(BupBase):
                     try:
                         pull_branches(repo_owner_and_name, branches, repo_dir, self.info_out)
                         pull_success = True
+                        pull_count += 1
                     except GitCommandError as e:
-                        log.info(e)
                         self.warning_out(f'could not pull "{repo_dir}" - will try to start over and do a clone of "{repo_owner_and_name}"')
 
                 # new to us - clone the repo
@@ -70,5 +75,8 @@ class GithubBackup(BupBase):
 
                         Repo.clone_from(github_repo.clone_url, repo_dir)
                         pull_branches(repo_owner_and_name, branches, repo_dir, self.info_out)
+                        clone_count += 1
                     except PermissionError as e:
                         log.warning(f"{repo_owner_and_name} : {e}")
+
+        self.info_out(f"{len(repositories)} repos, {pull_count} pulls, {clone_count} clones, {len(exclusions)} excluded")

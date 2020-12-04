@@ -51,14 +51,14 @@ class S3Backup(BupBase):
         self.info_out(f"backing up {len(buckets)} buckets")
 
         count = 0
-        excludes = ExclusionPreferences(BackupTypes.S3.name).get()
+        exclusions = ExclusionPreferences(BackupTypes.S3.name).get()
         for bucket_name in buckets:
 
             # do the sync
-            if excludes is not None and bucket_name in excludes:
-                self.info_out(f"excluding bucket : {bucket_name}")
+            if exclusions is not None and bucket_name in exclusions:
+                self.info_out(f"excluding {bucket_name}")
             else:
-                self.info_out(f"bucket : {bucket_name}")
+                self.info_out(f"{bucket_name}")
 
                 aws_cli_path = f'"{os.path.abspath(os.path.join("venv", "Scripts", "aws"))}"'
 
@@ -107,4 +107,5 @@ class S3Backup(BupBase):
                     error_routine = log.info
                 if error_routine is not None:
                     error_routine(f"{bucket_name} : {message} (s3_count={s3_object_count}, local_count={local_count}; s3_total_size={s3_total_size}, local_size={local_size})")
-        print(f"backed up {count} buckets")
+
+        self.info_out(f"{count} buckets, {count} backed up, {len(exclusions)} excluded")

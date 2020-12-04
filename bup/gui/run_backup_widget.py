@@ -1,5 +1,5 @@
 from enum import Enum
-from pathlib import Path
+from datetime import datetime
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QGroupBox, QHBoxLayout, QTextEdit
 
@@ -9,6 +9,10 @@ from bup import get_preferences, ExclusionPreferences
 max_text_lines = 100
 
 backup_classes = {BackupTypes.S3: S3Backup, BackupTypes.DynamoDB: DynamoDBBackup, BackupTypes.github: GithubBackup}
+
+
+def get_local_time_string() -> str:
+    return datetime.now().astimezone().isoformat()
 
 
 class DisplayTypes(Enum):
@@ -31,10 +35,10 @@ class DisplayBox(QGroupBox):
         self.text = []
 
     def append_text(self, s):
-        self.text.append(s)
+        self.text.append(f"{get_local_time_string()} {s}")
         if len(self.text) > max_text_lines:
             self.text.pop(0)  # FIFO
-        self.text_box.setText("\n".join(self.text))
+        self.text_box.setText(f"\n".join(reversed(self.text)))
 
     def clear_text(self):
         self.text = []
