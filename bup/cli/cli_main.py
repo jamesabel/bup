@@ -7,6 +7,8 @@ log = get_logger(__application_name__)
 
 def cli_main(args):
 
+    ui_type = UITypes.cli
+
     balsa = Balsa(__application_name__, __author__)
     balsa.log_console_prefix = "\r"
     balsa.init_logger_from_args(args)
@@ -14,7 +16,7 @@ def cli_main(args):
     log.info(f"__author__={__author__}")
     log.info(f"__version__={__version__}")
 
-    preferences = get_preferences(UITypes.cli)
+    preferences = get_preferences(ui_type)
     preferences.backup_directory = args.path  # backup classes will read the preferences DB directly
     preferences.github_token = args.token
     preferences.aws_profile = args.profile
@@ -33,15 +35,15 @@ def cli_main(args):
     s3_local_backup = None
     github_local_backup = None
     if args.s3 or args.aws:
-        s3_local_backup = S3Backup(log.info, log.warning, log.error)
+        s3_local_backup = S3Backup(ui_type, log.info, log.warning, log.error)
         s3_local_backup.start()
         did_something = True
     if args.dynamodb or args.aws:
-        dynamodb_local_backup = DynamoDBBackup(log.info, log.warning, log.error)
+        dynamodb_local_backup = DynamoDBBackup(ui_type, log.info, log.warning, log.error)
         dynamodb_local_backup.start()
         did_something = True
     if args.github:
-        github_local_backup = GithubBackup(log.info, log.warning, log.error)
+        github_local_backup = GithubBackup(ui_type, log.info, log.warning, log.error)
         github_local_backup.start()
         did_something = True
     if not did_something:

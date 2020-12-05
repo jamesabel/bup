@@ -35,7 +35,7 @@ class GithubBackup(BupBase):
 
     def run(self):
 
-        preferences = get_preferences()
+        preferences = get_preferences(self.ui_type)
         exclusions = ExclusionPreferences(BackupTypes.github.name).get()
 
         backup_dir = Path(preferences.backup_directory, "github")

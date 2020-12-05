@@ -31,7 +31,7 @@ class S3Backup(BupBase):
 
     def run(self):
 
-        preferences = get_preferences()
+        preferences = get_preferences(self.ui_type)
         dry_run = False
 
         backup_directory = os.path.join(preferences.backup_directory, "s3")

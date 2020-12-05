@@ -1,10 +1,11 @@
 from typing import Callable
 
 from PyQt5.QtCore import QThread, pyqtSignal
+from typeguard import typechecked
 
 from balsa import get_logger
 
-from bup import __application_name__
+from bup import __application_name__, UITypes
 
 log = get_logger(__application_name__)
 
@@ -16,8 +17,10 @@ class BupBase(QThread):
     warning_out_signal = pyqtSignal(str)
     error_out_signal = pyqtSignal(str)
 
-    def __init__(self, info_out: Callable, warning_out: Callable, error_out: Callable):
+    @typechecked()
+    def __init__(self, ui_type: UITypes, info_out: Callable, warning_out: Callable, error_out: Callable):
         super().__init__()
+        self.ui_type = ui_type
         self.caller_info_out = info_out
         self.caller_warning_out = warning_out
         self.caller_error_out = error_out

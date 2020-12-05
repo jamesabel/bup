@@ -7,6 +7,7 @@ from bup.gui import BupDialog, get_gui_preferences
 
 def gui_main():
 
+    # even though this is a GUI app, we don't use Balsa's GUI feature since we're already outputting to a GUI
     balsa = Balsa(__application_name__, __author__, verbose=get_gui_preferences().verbose)
     balsa.init_logger()
 

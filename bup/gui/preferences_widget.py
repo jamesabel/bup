@@ -36,10 +36,10 @@ class PreferencesWidget(QWidget):
         self.backup_directory_widget.setMaximumHeight(self.backup_directory_widget.minimumHeight())
         self.layout().addWidget(self.backup_directory_widget)
         self.layout().addWidget(QLabel())  # space
+        self.layout().addWidget(QLabel())  # space
 
         # AWS Credentials
         # profile
-        self.layout().addWidget(QLabel("Either provide an AWS Profile or an AWS Access Key ID/AWS Secret Access Key pair:"))
         self.aws_profile_widget = QWidget()
         self.aws_profile_widget.setLayout(QHBoxLayout())
         self.aws_profile_widget.layout().addWidget(QLabel("AWS Profile:"))
@@ -77,15 +77,23 @@ class PreferencesWidget(QWidget):
         self.aws_region_line_edit.textChanged.connect(self.aws_region_changed)
         self.aws_region_widget.layout().addWidget(self.aws_region_line_edit)
         self.layout().addWidget(self.aws_region_widget)
+        self.layout().addWidget(QLabel())  # space
+        self.layout().addWidget(QLabel())  # space
 
         # github
         self.github_widget = QWidget()
         self.github_widget.setLayout(QHBoxLayout())
         self.github_widget.layout().addWidget(QLabel("github token:"))
         self.github_token_line_edit = PreferencesLineEdit()
+        self.github_token_line_edit.setEchoMode(PreferencesLineEdit.Password)
         self.github_token_line_edit.textChanged.connect(self.github_token_changed)
         self.github_widget.layout().addWidget(self.github_token_line_edit)
+        self.github_show_button = QPushButton("Show")
+        self.github_show_button.clicked.connect(self.github_visible_clicked)
+        self.github_widget.layout().addWidget(self.github_show_button)
         self.layout().addWidget(self.github_widget)
+        self.layout().addWidget(QLabel())  # space
+        self.layout().addWidget(QLabel())  # space
 
         # verbose
         self.verbose_check_box = QCheckBox("Verbose")
@@ -137,6 +145,14 @@ class PreferencesWidget(QWidget):
 
     def github_token_changed(self):
         get_gui_preferences().github_token = self.github_token_line_edit.text()
+
+    def github_visible_clicked(self):
+        if self.github_token_line_edit.echoMode() == PreferencesLineEdit.Password:
+            self.github_show_button.setText("Hide")
+            self.github_token_line_edit.setEchoMode(PreferencesLineEdit.Normal)
+        else:
+            self.github_show_button.setText("Show")
+            self.github_token_line_edit.setEchoMode(PreferencesLineEdit.Password)
 
     def verbose_clicked(self):
         get_gui_preferences().verbose = self.verbose_check_box.isChecked()

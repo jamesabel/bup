@@ -12,7 +12,7 @@ class DynamoDBBackup(BupBase):
     backup_type = BackupTypes.DynamoDB
 
     def run(self):
-        preferences = get_preferences()
+        preferences = get_preferences(self.ui_type)
         backup_directory = preferences.backup_directory
         exclusions = ExclusionPreferences(self.backup_type.name).get()
         dry_run = False

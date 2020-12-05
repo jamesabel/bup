@@ -2,12 +2,16 @@ from enum import Enum
 from datetime import datetime
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QGroupBox, QHBoxLayout, QTextEdit
+from balsa import get_logger
 
-from bup import BackupTypes, S3Backup, DynamoDBBackup, GithubBackup, ExclusionPreferences
+from bup import BackupTypes, S3Backup, DynamoDBBackup, GithubBackup, ExclusionPreferences, UITypes, __application_name__
+from bup.gui import get_gui_preferences
 
 max_text_lines = 100
 
 backup_classes = {BackupTypes.S3: S3Backup, BackupTypes.DynamoDB: DynamoDBBackup, BackupTypes.github: GithubBackup}
+
+log = get_logger(__application_name__)
 
 
 def get_local_time_string() -> str:
@@ -111,8 +115,10 @@ class RunBackupWidget(QWidget):
             self.backup_status[backup_type] = BackupWidget(backup_type)
             self.backup_status[backup_type].setLayout(QHBoxLayout())
 
-            d = self.backup_status[backup_type].display_boxes
-            self.backup_engines[backup_type] = backup_classes[backup_type](d[DisplayTypes.log].append_text, d[DisplayTypes.warnings].append_text, d[DisplayTypes.errors].append_text)
+            display_boxes = self.backup_status[backup_type].display_boxes
+            self.backup_engines[backup_type] = backup_classes[backup_type](
+                UITypes.gui, display_boxes[DisplayTypes.log].append_text, display_boxes[DisplayTypes.warnings].append_text, display_boxes[DisplayTypes.errors].append_text
+            )
 
             self.status_layout.addWidget(self.backup_status[backup_type])
 
@@ -121,8 +127,12 @@ class RunBackupWidget(QWidget):
         self.top_level_layout.addWidget(self.status_widget)
 
     def start(self):
-        for backup_type in self.backup_engines:
-            self.backup_engines[backup_type].start()
+        preferences = get_gui_preferences()
+        if preferences.backup_directory is None:
+            log.error("backup directory not set")
+        else:
+            for backup_type in self.backup_engines:
+                self.backup_engines[backup_type].start()
 
     def stop(self):
         for backup_type in self.backup_engines:
