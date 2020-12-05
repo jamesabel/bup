@@ -2,7 +2,6 @@ from enum import Enum
 from datetime import datetime
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QGroupBox, QHBoxLayout, QTextEdit, QSplitter
-from PyQt5.QtGui import QCloseEvent
 from PyQt5.QtCore import Qt
 from balsa import get_logger
 
@@ -159,7 +158,8 @@ class RunBackupWidget(QWidget):
         for backup_type in BackupTypes:
             for display_type in DisplayTypes:
 
-                height = int(getattr(preferences, self.get_layout_key(backup_type, display_type, "height"), None))
-                width = int(getattr(preferences, self.get_layout_key(backup_type, display_type, "width"), None))
-                if height is not None and height > 0 and width is not None and width > 0:
+                height = int(getattr(preferences, self.get_layout_key(backup_type, display_type, "height"), 0))
+                width = int(getattr(preferences, self.get_layout_key(backup_type, display_type, "width"), 0))
+                # make sure all windows come up as visible, even if the user has reduced them to zero
+                if height > 0 and width > 0:
                     self.backup_status[backup_type].display_boxes[display_type].resize(width, height)

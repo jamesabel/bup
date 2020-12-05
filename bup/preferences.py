@@ -18,6 +18,8 @@ class BupPreferences(PrefDict):
     github_token: str = attrib(default=None)
     verbose: bool = attrib(default=None)
 
+    width: int = attrib(default=None)
+    height: int = attrib(default=None)
     S3_exclusions_width: int = attrib(default=None)
     S3_exclusions_height: int = attrib(default=None)
     S3_log_height: int = attrib(default=None)
