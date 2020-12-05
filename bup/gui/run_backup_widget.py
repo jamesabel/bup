@@ -1,7 +1,9 @@
 from enum import Enum
 from datetime import datetime
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QGroupBox, QHBoxLayout, QTextEdit
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QGroupBox, QHBoxLayout, QTextEdit, QSplitter
+from PyQt5.QtGui import QCloseEvent
+from PyQt5.QtCore import Qt
 from balsa import get_logger
 
 from bup import BackupTypes, S3Backup, DynamoDBBackup, GithubBackup, ExclusionPreferences, UITypes, __application_name__
@@ -32,7 +34,7 @@ class DisplayBox(QGroupBox):
 
     def __init__(self, name: str, read_only: bool):
         super().__init__(name)
-        self.setLayout(QVBoxLayout())
+        self.setLayout(QVBoxLayout())  # only one widget so orientation doesn't matter
         self.text_box = QTextEdit()
         self.text_box.setReadOnly(read_only)
         self.layout().addWidget(self.text_box)
@@ -60,9 +62,11 @@ class BackupWidget(QGroupBox):
         self.setLayout(QVBoxLayout())
 
         self.display_boxes = {}
+        self.splitter = QSplitter(Qt.Vertical)
+        self.layout().addWidget(self.splitter)
         for display_type in DisplayTypes:
             self.display_boxes[display_type] = DisplayBox(display_type.value, display_type is not DisplayTypes.exclusions)
-            self.layout().addWidget(self.display_boxes[display_type])
+            self.splitter.addWidget(self.display_boxes[display_type])
             if display_type == DisplayTypes.exclusions:
                 # read exclusions into the DB
                 exclusions = ExclusionPreferences(self.backup_type.name)
@@ -126,6 +130,8 @@ class RunBackupWidget(QWidget):
         self.top_level_layout.addWidget(self.controls_widget)
         self.top_level_layout.addWidget(self.status_widget)
 
+        self.set_layout_dimensions()
+
     def start(self):
         preferences = get_gui_preferences()
         if preferences.backup_directory is None:
@@ -137,3 +143,23 @@ class RunBackupWidget(QWidget):
     def stop(self):
         for backup_type in self.backup_engines:
             self.backup_engines[backup_type].terminate()
+
+    def get_layout_key(self, backup_type: BackupTypes, display_type: DisplayTypes, height_width: str):
+        return f"{backup_type.name}_{display_type.name}_{height_width}"
+
+    def save_layout_dimensions(self):
+        preferences = get_gui_preferences()
+        for backup_type in BackupTypes:
+            for display_type in DisplayTypes:
+                setattr(preferences, self.get_layout_key(backup_type, display_type, "height"), self.backup_status[backup_type].display_boxes[display_type].height())
+                setattr(preferences, self.get_layout_key(backup_type, display_type, "width"), self.backup_status[backup_type].display_boxes[display_type].width())
+
+    def set_layout_dimensions(self):
+        preferences = get_gui_preferences()
+        for backup_type in BackupTypes:
+            for display_type in DisplayTypes:
+
+                height = int(getattr(preferences, self.get_layout_key(backup_type, display_type, "height"), None))
+                width = int(getattr(preferences, self.get_layout_key(backup_type, display_type, "width"), None))
+                if height is not None and height > 0 and width is not None and width > 0:
+                    self.backup_status[backup_type].display_boxes[display_type].resize(width, height)
