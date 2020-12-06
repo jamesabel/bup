@@ -2,7 +2,7 @@ from enum import Enum
 from datetime import datetime
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QGroupBox, QHBoxLayout, QTextEdit, QSplitter, QLabel
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QThread
 from balsa import get_logger
 
 from bup import BackupTypes, S3Backup, DynamoDBBackup, GithubBackup, ExclusionPreferences, UITypes, __application_name__
@@ -13,6 +13,19 @@ max_text_lines = 100
 backup_classes = {BackupTypes.S3: S3Backup, BackupTypes.DynamoDB: DynamoDBBackup, BackupTypes.github: GithubBackup}
 
 log = get_logger(__application_name__)
+
+
+class RunAll(QThread):
+    def __init__(self, widget):
+        self.widget = widget
+        super().__init__()
+
+    def run(self):
+        for backup_type in self.widget.backup_engines:
+            self.widget.backup_engines[backup_type].start()
+        for backup_type in self.widget.backup_engines:
+            self.widget.backup_engines[backup_type].wait()
+        self.widget.most_recent_backup = int(round(datetime.now().timestamp()))
 
 
 def get_local_time_string() -> str:
@@ -117,6 +130,7 @@ class RunBackupWidget(QWidget):
         self.status_widget.setLayout(self.status_layout)
         self.backup_status = {}
         self.backup_engines = {}
+        self.run_all = RunAll(self)
 
         for backup_type in BackupTypes:
             self.backup_status[backup_type] = BackupWidget(backup_type)
@@ -140,9 +154,7 @@ class RunBackupWidget(QWidget):
         if preferences.backup_directory is None:
             log.error("backup directory not set")
         else:
-            for backup_type in self.backup_engines:
-                if not self.backup_engines[backup_type].isRunning():
-                    self.backup_engines[backup_type].start()
+            self.run_all.start()
 
     def stop(self):
         for backup_type in self.backup_engines:
