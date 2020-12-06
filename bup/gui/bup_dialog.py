@@ -46,13 +46,17 @@ class BupDialog(QDialog):
                 now = datetime.now()
                 backup_period_time_delta = timedelta(hours=backup_period)
                 if self.run_backup_widget.most_recent_backup is None:
+                    # first time run
                     self.run_backup_widget.start()
                 else:
                     most_recent_backup = datetime.fromtimestamp(self.run_backup_widget.most_recent_backup)
                     next_backup_date_time = most_recent_backup + backup_period_time_delta
-                    next_backup_time = next_backup_date_time - now
-                    next_backup_time_delta = timedelta(days=next_backup_time.days, seconds=next_backup_time.seconds)  # don't display fractions of a second
-                    self.run_backup_widget.countdown_text.setText(f"{next_backup_date_time.strftime('%m-%d-%Y %H:%M:%S')} (in {str(next_backup_time_delta)})")
+                    next_backup_time_delta = next_backup_date_time - now
+                    next_backup_time_delta_second_granularity = timedelta(days=next_backup_time_delta.days, seconds=next_backup_time_delta.seconds)  # don't display fractions of a second
+                    self.run_backup_widget.countdown_text.setText(f"{next_backup_date_time.strftime('%m-%d-%Y %H:%M:%S')} (in {str(next_backup_time_delta_second_granularity)})")
+                    if next_backup_time_delta.total_seconds() <= 0.0:
+                        # timer is up - start the backup
+                        self.run_backup_widget.start()
         else:
             self.run_backup_widget.countdown_text.setText(f"(automatic backup not enabled)")
 

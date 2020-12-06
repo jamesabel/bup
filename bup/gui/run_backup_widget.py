@@ -25,7 +25,7 @@ class RunAll(QThread):
             self.widget.backup_engines[backup_type].start()
         for backup_type in self.widget.backup_engines:
             self.widget.backup_engines[backup_type].wait()
-        self.widget.most_recent_backup = int(round(datetime.now().timestamp()))
+        self.widget.most_recent_backup = int(round(datetime.now().timestamp()))  # set after all runs successfully finished
 
 
 def get_local_time_string() -> str:
