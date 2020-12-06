@@ -1,6 +1,6 @@
 import os
 
-from setuptools import setup
+from setuptools import setup, find_packages
 
 from bup.__version__ import __version__, __title__, __author__, __author_email__, __url__, __download_url__, __description__
 
@@ -21,7 +21,7 @@ setup(
     url=__url__,
     download_url=__download_url__,
     keywords=["aws", "dynamodb", "s3", "github", "backup"],
-    packages=[__title__],
+    packages=find_packages(),
     package_data={__title__: [readme_file_path]},
     install_requires=["ismain", "balsa", "boto3", "typeguard", "hashy", "dictim", "awsimple", "pressenter2exit", "awscli", "GitPython", "github3.py", "sqlitedict", "tobool", "attrs",
                       "appdirs", "pref", "pyqt5"],

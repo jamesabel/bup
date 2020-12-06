@@ -133,3 +133,5 @@ dmypy.json
 # the actual license file is LICENSE (no .txt)
 LICENSE.txt
 temp/
+app/
+*.nsi
