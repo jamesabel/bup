@@ -41,22 +41,21 @@ class BupDialog(QDialog):
             except ValueError:
                 backup_period = None
             if backup_period is None:
-                backup_status_text = "(automatic backup not set)"
+                self.run_backup_widget.countdown_text.setText("(automatic backup not set)")
             else:
                 now = datetime.now()
                 backup_period_time_delta = timedelta(hours=backup_period)
                 if self.run_backup_widget.most_recent_backup is None:
-                    backup_status_text = ""
                     self.run_backup_widget.start()
                 else:
                     most_recent_backup = datetime.fromtimestamp(self.run_backup_widget.most_recent_backup)
                     next_backup_date_time = most_recent_backup + backup_period_time_delta
                     next_backup_time = next_backup_date_time - now
-                    next_backup_time_delta = timedelta(days=next_backup_time.days, seconds=next_backup_time.seconds)
-                    backup_status_text = f"{next_backup_date_time.strftime('%m-%d-%Y %H:%M:%S')} (in {str(next_backup_time_delta)})"
+                    next_backup_time_delta = timedelta(days=next_backup_time.days, seconds=next_backup_time.seconds)  # don't display fractions of a second
+                    self.run_backup_widget.countdown_text.setText(f"{next_backup_date_time.strftime('%m-%d-%Y %H:%M:%S')} (in {str(next_backup_time_delta)})")
         else:
-            backup_status_text = f"(automatic backup not enabled)"
-        self.run_backup_widget.countdown_text.setText(backup_status_text)
+            self.run_backup_widget.countdown_text.setText(f"(automatic backup not enabled)")
+
 
 
     def closeEvent(self, close_event: QCloseEvent) -> None:
