@@ -22,7 +22,7 @@ class BupPreferences(PrefDict):
     run_on_startup: bool = attrib(default=None)
 
     automatic_backup: bool = attrib(default=None)
-    backup_frequency: int = attrib(default=None)  # hours
+    backup_period: int = attrib(default=None)  # hours
     most_recent_backup: int = attrib(default=None)  # epoch in seconds
 
     verbose: bool = attrib(default=None)

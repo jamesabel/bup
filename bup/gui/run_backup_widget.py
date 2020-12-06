@@ -1,7 +1,7 @@
 from enum import Enum
 from datetime import datetime
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QGroupBox, QHBoxLayout, QTextEdit, QSplitter
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QGroupBox, QHBoxLayout, QTextEdit, QSplitter, QLabel
 from PyQt5.QtCore import Qt
 from balsa import get_logger
 
@@ -91,6 +91,8 @@ class RunBackupWidget(QWidget):
     def __init__(self):
         super().__init__()
 
+        self.most_recent_backup = None
+
         self.top_level_layout = QVBoxLayout()
         self.setLayout(self.top_level_layout)
 
@@ -98,14 +100,16 @@ class RunBackupWidget(QWidget):
         self.controls_widget = QWidget()
         self.controls_layout = QHBoxLayout()
         self.controls_widget.setLayout(self.controls_layout)
-
         self.start_button = QPushButton("Start")
         self.start_button.clicked.connect(self.start)
+        self.controls_layout.addWidget(self.start_button)
         self.stop_button = QPushButton("Stop")
         self.stop_button.clicked.connect(self.stop)
-
-        self.controls_layout.addWidget(self.start_button)
         self.controls_layout.addWidget(self.stop_button)
+        self.controls_layout.addWidget(QLabel("Next backup:"))
+        self.countdown_text = QLabel()
+        self.controls_layout.addWidget(self.countdown_text)
+        self.controls_layout.addStretch()
 
         # status
         self.status_widget = QGroupBox("Status")
@@ -129,7 +133,7 @@ class RunBackupWidget(QWidget):
         self.top_level_layout.addWidget(self.controls_widget)
         self.top_level_layout.addWidget(self.status_widget)
 
-        self.set_layout_dimensions()
+        self.restore_state()
 
     def start(self):
         preferences = get_gui_preferences()
@@ -137,7 +141,8 @@ class RunBackupWidget(QWidget):
             log.error("backup directory not set")
         else:
             for backup_type in self.backup_engines:
-                self.backup_engines[backup_type].start()
+                if not self.backup_engines[backup_type].isRunning():
+                    self.backup_engines[backup_type].start()
 
     def stop(self):
         for backup_type in self.backup_engines:
@@ -146,14 +151,15 @@ class RunBackupWidget(QWidget):
     def get_layout_key(self, backup_type: BackupTypes, display_type: DisplayTypes, height_width: str):
         return f"{backup_type.name}_{display_type.name}_{height_width}"
 
-    def save_layout_dimensions(self):
+    def save_state(self):
         preferences = get_gui_preferences()
         for backup_type in BackupTypes:
             for display_type in DisplayTypes:
                 setattr(preferences, self.get_layout_key(backup_type, display_type, "height"), self.backup_status[backup_type].display_boxes[display_type].height())
                 setattr(preferences, self.get_layout_key(backup_type, display_type, "width"), self.backup_status[backup_type].display_boxes[display_type].width())
+        preferences.most_recent_backup = self.most_recent_backup
 
-    def set_layout_dimensions(self):
+    def restore_state(self):
         preferences = get_gui_preferences()
         for backup_type in BackupTypes:
             for display_type in DisplayTypes:
@@ -163,3 +169,5 @@ class RunBackupWidget(QWidget):
                 # make sure all windows come up as visible, even if the user has reduced them to zero
                 if height > 0 and width > 0:
                     self.backup_status[backup_type].display_boxes[display_type].resize(width, height)
+
+        self.most_recent_backup = preferences.most_recent_backup

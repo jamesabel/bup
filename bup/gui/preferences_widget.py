@@ -103,10 +103,10 @@ class PreferencesWidget(QWidget):
         # automatic backup
         self.automatic_backup_widget = QWidget()
         self.automatic_backup_widget.setLayout(QHBoxLayout())
-        self.automatic_backup_frequency = QSpinBox()
-        self.automatic_backup_frequency.textChanged.connect(self.automatic_backup_changed)
-        self.automatic_backup_widget.layout().addWidget(QLabel("Automatic backup frequency (hours):"))
-        self.automatic_backup_widget.layout().addWidget(self.automatic_backup_frequency)
+        self.automatic_backup_period = QSpinBox()
+        self.automatic_backup_period.textChanged.connect(self.automatic_backup_changed)
+        self.automatic_backup_widget.layout().addWidget(QLabel("Backup every (hours):"))
+        self.automatic_backup_widget.layout().addWidget(self.automatic_backup_period)
         self.automatic_backup_enable_check_box = QCheckBox("enable")
         self.automatic_backup_enable_check_box.clicked.connect(self.automatic_backup_changed)
         self.automatic_backup_widget.layout().addWidget(self.automatic_backup_enable_check_box)
@@ -134,7 +134,8 @@ class PreferencesWidget(QWidget):
         self.github_token_line_edit.setText(preferences.github_token)
         self.verbose_check_box.setChecked(bool(preferences.verbose))  # None translates to False
         self.automatic_backup_enable_check_box.setChecked(bool(preferences.automatic_backup))
-        self.automatic_backup_frequency.setValue(preferences.backup_frequency)
+        if preferences.backup_period is not None:
+            self.automatic_backup_period.setValue(preferences.backup_period)
 
     def select_backup_directory(self):
         new_backup_directory = QFileDialog.getExistingDirectory(self, "Select Backup Directory")
@@ -181,5 +182,5 @@ class PreferencesWidget(QWidget):
     def automatic_backup_changed(self):
         preferences = get_gui_preferences()
         preferences.automatic_backup = self.automatic_backup_enable_check_box.isChecked()
-        if len(backup_frequency := self.automatic_backup_frequency.text().strip()) > 0:
-            preferences.backup_frequency = int(round(float(backup_frequency)))
+        if len(backup_period := self.automatic_backup_period.text().strip()) > 0:
+            preferences.backup_period = int(round(float(backup_period)))
