@@ -4,7 +4,7 @@ from PyQt5.QtGui import QCloseEvent
 from PyQt5.QtCore import QTimer
 
 from bup import __application_name__, __version__, get_preferences, UITypes
-from bup.gui import PreferencesWidget, RunBackupWidget
+from bup.gui import PreferencesWidget, RunBackupWidget, BupAbout
 
 
 class BupDialog(QDialog):
@@ -20,9 +20,11 @@ class BupDialog(QDialog):
 
         self.run_backup_widget = RunBackupWidget()
         self.preferences_widget = PreferencesWidget()
+        self.about_widget = BupAbout()
 
         self.tab_widget.addTab(self.run_backup_widget, "Backup")
         self.tab_widget.addTab(self.preferences_widget, "Preferences")
+        self.tab_widget.addTab(self.about_widget, "About")
 
         preferences = get_preferences(UITypes.gui)
         width = preferences.width
@@ -59,8 +61,6 @@ class BupDialog(QDialog):
                         self.run_backup_widget.start()
         else:
             self.run_backup_widget.countdown_text.setText(f"(automatic backup not enabled)")
-
-
 
     def closeEvent(self, close_event: QCloseEvent) -> None:
         self.run_backup_widget.save_state()
