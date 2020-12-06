@@ -65,7 +65,7 @@ class DisplayBox(QGroupBox):
 
 class BackupWidget(QGroupBox):
     """
-    GUI for a particular backup type (e.g. S3, DynamoDB, github).  Status is read-only, but exclusions are edited here.
+    GUI for a particular backup type (e.g. S3, DynamoDB, github).  Status text is read-only, but exclusions are edited here.
     """
 
     def __init__(self, backup_type: BackupTypes):
