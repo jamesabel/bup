@@ -135,3 +135,5 @@ LICENSE.txt
 temp/
 app/
 *.nsi
+temp.*
+installers/
