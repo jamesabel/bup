@@ -3,4 +3,6 @@ name = "bup"
 
 [tool.pyship]
 is_gui = true
-run_on_startup = true
+
+# registry settings pyship is using has been flagging a false positve on windows defender so don't use run_on_startup for now
+run_on_startup = false
