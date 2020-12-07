@@ -25,7 +25,6 @@ class RunAll(QThread):
             self.widget.backup_engines[backup_type].start()
         for backup_type in self.widget.backup_engines:
             self.widget.backup_engines[backup_type].wait()
-        self.widget.most_recent_backup = int(round(datetime.now().timestamp()))  # set after all runs successfully finished
 
 
 def get_local_time_string() -> str:
@@ -150,6 +149,7 @@ class RunBackupWidget(QWidget):
         self.restore_state()
 
     def start(self):
+        self.most_recent_backup = int(round(datetime.now().timestamp()))  # set after all runs successfully finished
         preferences = get_gui_preferences()
         if preferences.backup_directory is None:
             log.error("backup directory not set")
@@ -176,11 +176,12 @@ class RunBackupWidget(QWidget):
         preferences = get_gui_preferences()
         for backup_type in BackupTypes:
             for display_type in DisplayTypes:
-
-                height = int(getattr(preferences, self.get_layout_key(backup_type, display_type, "height"), 0))
-                width = int(getattr(preferences, self.get_layout_key(backup_type, display_type, "width"), 0))
-                # make sure all windows come up as visible, even if the user has reduced them to zero
-                if height > 0 and width > 0:
+                if (height := getattr(preferences, self.get_layout_key(backup_type, display_type, "height"), 0)) is not None:
+                    height = int(height)
+                if (width := getattr(preferences, self.get_layout_key(backup_type, display_type, "width"), 0)) is not None:
+                    width = int(width)
+                # make sure all windows come up as visible, even if not set or the user has reduced them to zero
+                if height is not None and height > 0 and width is not None and width > 0:
                     self.backup_status[backup_type].display_boxes[display_type].resize(width, height)
 
         self.most_recent_backup = preferences.most_recent_backup

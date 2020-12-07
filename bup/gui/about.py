@@ -2,7 +2,7 @@ from pathlib import Path
 
 from PyQt5.QtWidgets import QVBoxLayout, QWidget, QTextBrowser
 
-from bup import __url__, __author_url__
+from bup import __url__, __author_url__, __version__
 
 
 class BupAbout(QWidget):
@@ -10,10 +10,12 @@ class BupAbout(QWidget):
         super().__init__()
         self.setLayout(QVBoxLayout())
 
-        about_text = Path("LICENSE").read_text()
+        about_text = f"### BUP ({__version__})\n\n"
+        about_text += Path("LICENSE").read_text()
         about_text += "\n---\n"
         about_text += f"\nsource code: [{__url__}]({__url__})\n"
         about_text += f"\nauthor's web site: [{__author_url__}]({__author_url__})\n"
+        about_text += "\n---\n"
         about_text += "\n---\n"
         about_text += Path("gpl-3.0.md").read_text()
 
