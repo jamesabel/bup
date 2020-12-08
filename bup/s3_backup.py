@@ -70,11 +70,12 @@ class S3Backup(BupBase):
                 if aws_cli_path is None:
                     log.error(f"AWS CLI executable not found ({aws_cli_paths=})")
                 else:
+                    aws_cli_path = f'"{str(aws_cli_path)}"'  # from Path to str, with quotes for installed app
                     destination = Path(backup_directory, bucket_name)
                     os.makedirs(destination, exist_ok=True)
                     s3_bucket_path = f"s3://{bucket_name}"
                     # Don't use --delete.  We want to keep 'old' files locally.
-                    sync_command_line = [str(aws_cli_path), "s3", "sync", s3_bucket_path, str(destination.absolute())]
+                    sync_command_line = [aws_cli_path, "s3", "sync", s3_bucket_path, str(destination.absolute())]
                     if dry_run:
                         sync_command_line.append("--dryrun")
                     sync_command_line_str = " ".join(sync_command_line)
@@ -90,7 +91,7 @@ class S3Backup(BupBase):
                         log.info(line.strip())
 
                     # check the results
-                    ls_command_line = [str(aws_cli_path), "s3", "ls", "--summarize", "--recursive", s3_bucket_path]
+                    ls_command_line = [aws_cli_path, "s3", "ls", "--summarize", "--recursive", s3_bucket_path]
                     ls_command_line_str = " ".join(ls_command_line)
                     log.info(ls_command_line_str)
                     ls_result = subprocess.run(ls_command_line_str, stdout=subprocess.PIPE, shell=True)
