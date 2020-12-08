@@ -90,7 +90,7 @@ class S3Backup(BupBase):
                         log.info(line.strip())
 
                     # check the results
-                    ls_command_line = [aws_cli_path, "s3", "ls", "--summarize", "--recursive", s3_bucket_path]
+                    ls_command_line = [str(aws_cli_path), "s3", "ls", "--summarize", "--recursive", s3_bucket_path]
                     ls_command_line_str = " ".join(ls_command_line)
                     log.info(ls_command_line_str)
                     ls_result = subprocess.run(ls_command_line_str, stdout=subprocess.PIPE, shell=True)
