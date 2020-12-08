@@ -3,6 +3,7 @@ import os
 import re
 from pathlib import Path
 from multiprocessing import freeze_support
+from copy import deepcopy
 
 from awsimple import S3Access
 from balsa import get_logger
@@ -59,18 +60,28 @@ class S3Backup(BupBase):
                 self.info_out(f"{bucket_name}")
 
                 # try to find the AWS CLI app
-                aws_cli_paths = [Path("venv", "Scripts", "aws").absolute(),
-                                 Path("Scripts", "aws").absolute()]
+                paths = [(Path("venv", "Scripts", "python.exe").absolute(), Path("venv", "Scripts", "aws").absolute()),  # local venv
+                         (Path("python.exe").absolute(), Path("Scripts", "aws").absolute())  # installed app
+                         ]
                 aws_cli_path = None
-                for path in aws_cli_paths:
-                    if path.exists():
-                        aws_cli_path = path
+                python_path = None
+                for p, a in paths:
+                    if p.exists() and a.exists():
+                        aws_cli_path = a
+                        python_path = p
                         break
 
                 if aws_cli_path is None:
-                    log.error(f"AWS CLI executable not found ({aws_cli_paths=})")
+                    log.error(f"AWS CLI executable not found ({paths=})")
+                elif python_path is None:
+                    log.error(f"Python executable not found ({paths=})")
                 else:
                     aws_cli_path = f'"{str(aws_cli_path)}"'  # from Path to str, with quotes for installed app
+                    # AWS CLI app also needs the python executable to be in the path if it's not in the same dir, which happens when this program is installed.
+                    # Make the directory of our python.exe the first in the list so it's found and not any of the others that may or may not be in the PATH.
+                    env_var = deepcopy(os.environ)
+                    env_var["path"] = f"{str(python_path.parent)};{env_var.get('path', '')}"
+
                     destination = Path(backup_directory, bucket_name)
                     os.makedirs(destination, exist_ok=True)
                     s3_bucket_path = f"s3://{bucket_name}"
@@ -82,7 +93,7 @@ class S3Backup(BupBase):
                     log.info(sync_command_line_str)
 
                     try:
-                        sync_result = subprocess.run(sync_command_line_str, stdout=subprocess.PIPE, shell=True)
+                        sync_result = subprocess.run(sync_command_line_str, stdout=subprocess.PIPE, shell=True, env=env_var)
                     except FileNotFoundError as e:
                         self.error_out(f'error executing {" ".join(sync_command_line)} {e}')
                         return
@@ -94,7 +105,7 @@ class S3Backup(BupBase):
                     ls_command_line = [aws_cli_path, "s3", "ls", "--summarize", "--recursive", s3_bucket_path]
                     ls_command_line_str = " ".join(ls_command_line)
                     log.info(ls_command_line_str)
-                    ls_result = subprocess.run(ls_command_line_str, stdout=subprocess.PIPE, shell=True)
+                    ls_result = subprocess.run(ls_command_line_str, stdout=subprocess.PIPE, shell=True, env=env_var)
                     count += 1
                     ls_stdout = "".join([c for c in ls_result.stdout.decode(decoding) if c not in " \r\n"])  # remove all whitespace
                     ls_parsed = ls_re.search(ls_stdout)

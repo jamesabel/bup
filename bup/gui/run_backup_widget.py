@@ -133,8 +133,6 @@ class RunBackupWidget(QWidget):
 
         for backup_type in BackupTypes:
             self.backup_status[backup_type] = BackupWidget(backup_type)
-            self.backup_status[backup_type].setLayout(QHBoxLayout())
-
             display_boxes = self.backup_status[backup_type].display_boxes
             self.backup_engines[backup_type] = backup_classes[backup_type](
                 UITypes.gui, display_boxes[DisplayTypes.log].append_text, display_boxes[DisplayTypes.warnings].append_text, display_boxes[DisplayTypes.errors].append_text
