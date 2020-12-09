@@ -35,6 +35,7 @@ class BupDialog(QDialog):
         self.autobackup_timer = QTimer()
         self.autobackup_timer.timeout.connect(self.autobackup_tick)
         self.autobackup_timer.start(1000)  # once a second
+        self.tick_count = 0
 
     def autobackup_tick(self):
         if self.preferences_widget.automatic_backup_enable_check_box.isChecked():
@@ -61,9 +62,11 @@ class BupDialog(QDialog):
                         self.run_backup_widget.start()
 
             if self.run_backup_widget.run_all.isRunning():
-                self.run_backup_widget.countdown_text.setText("running ..")
+                ticks = '.' * (self.tick_count % 4)
+                self.run_backup_widget.countdown_text.setText(f"running {ticks}")
         else:
             self.run_backup_widget.countdown_text.setText(f"(automatic backup not enabled)")
+        self.tick_count += 1
 
     def closeEvent(self, close_event: QCloseEvent) -> None:
         self.run_backup_widget.save_state()
