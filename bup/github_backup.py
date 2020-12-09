@@ -1,6 +1,5 @@
 from typing import Iterable
 from pathlib import Path
-import shutil
 from typing import Callable
 
 import github3
@@ -8,7 +7,7 @@ from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
 from balsa import get_logger
 
-from bup import __application_name__, BupBase, BackupTypes, get_preferences, ExclusionPreferences
+from bup import __application_name__, BupBase, BackupTypes, get_preferences, ExclusionPreferences, rmdir
 
 log = get_logger(__application_name__)
 
@@ -36,6 +35,7 @@ class GithubBackup(BupBase):
     def run(self):
 
         preferences = get_preferences(self.ui_type)
+        dry_run = preferences.dry_run
         exclusions = ExclusionPreferences(BackupTypes.github.name).get()
 
         backup_dir = Path(preferences.backup_directory, "github")
@@ -51,6 +51,8 @@ class GithubBackup(BupBase):
             repo_name = repo_owner_and_name.split("/")[-1]
             if any([e == repo_name for e in exclusions]):
                 self.info_out(f"{repo_owner_and_name} excluded")
+            elif dry_run:
+                self.info_out(f'dry run {repo_owner_and_name}')
             else:
                 repo_dir = Path(backup_dir, repo_owner_and_name).absolute()
                 branches = github_repo.branches()
@@ -69,7 +71,7 @@ class GithubBackup(BupBase):
                 if not pull_success:
                     try:
                         if repo_dir.exists():
-                            shutil.rmtree(repo_dir)
+                            rmdir(repo_dir)
 
                         self.info_out(f'git clone "{repo_owner_and_name}"')
 

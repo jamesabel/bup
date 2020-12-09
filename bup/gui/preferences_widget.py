@@ -115,6 +115,11 @@ class PreferencesWidget(QWidget):
         self.layout().addWidget(QLabel())  # space
         self.layout().addWidget(QLabel())  # space
 
+        # dry run
+        self.dry_run_check_box = QCheckBox("Dry run")
+        self.dry_run_check_box.clicked.connect(self.dry_run_clicked)
+        self.layout().addWidget(self.dry_run_check_box)
+
         # verbose
         self.verbose_check_box = QCheckBox("Verbose")
         self.verbose_check_box.clicked.connect(self.verbose_clicked)
@@ -178,6 +183,9 @@ class PreferencesWidget(QWidget):
 
     def verbose_clicked(self):
         get_gui_preferences().verbose = self.verbose_check_box.isChecked()
+
+    def dry_run_clicked(self):
+        get_gui_preferences().dry_run = self.dry_run_check_box.isChecked()
 
     def automatic_backup_changed(self):
         preferences = get_gui_preferences()

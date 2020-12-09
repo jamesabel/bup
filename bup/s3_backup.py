@@ -33,7 +33,7 @@ class S3Backup(BupBase):
     def run(self):
 
         preferences = get_preferences(self.ui_type)
-        dry_run = False
+        dry_run = preferences.dry_run
 
         backup_directory = os.path.join(preferences.backup_directory, "s3")
 
@@ -57,7 +57,10 @@ class S3Backup(BupBase):
             if bucket_name in exclusions:
                 self.info_out(f"excluding {bucket_name}")
             else:
-                self.info_out(f"{bucket_name}")
+                if dry_run:
+                    self.info_out(f"dry run {bucket_name}")
+                else:
+                    self.info_out(f"{bucket_name}")
 
                 # try to find the AWS CLI app
                 paths = [(Path("venv", "Scripts", "python.exe").absolute(), Path("venv", "Scripts", "aws").absolute()),  # local venv

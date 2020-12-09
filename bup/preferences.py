@@ -25,6 +25,8 @@ class BupPreferences(PrefDict):
     backup_period: int = attrib(default=None)  # hours
     most_recent_backup: int = attrib(default=None)  # epoch in seconds
 
+    dry_run: bool = attrib(default=None)
+
     verbose: bool = attrib(default=None)
 
     height: int = attrib(default=None)
