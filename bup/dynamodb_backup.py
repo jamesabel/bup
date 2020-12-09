@@ -1,7 +1,6 @@
 import pickle
 from datetime import timedelta
 from pathlib import Path
-import json
 
 from awsimple import DynamoDBAccess, dynamodb_to_json
 
