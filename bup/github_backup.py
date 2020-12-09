@@ -1,5 +1,6 @@
 from typing import Iterable
 from pathlib import Path
+import time
 
 import github3
 from git import Repo
@@ -59,29 +60,35 @@ class GithubBackup(BupBase):
                         self.info_out(f'git clone "{repo_owner_and_name}"')
 
                         Repo.clone_from(github_repo.clone_url, repo_dir)
+                        time.sleep(1.0)
                         self.pull_branches(repo_owner_and_name, branches, repo_dir)
                         clone_count += 1
                     except PermissionError as e:
-                        log.warning(f"{repo_owner_and_name} : {e}")
+                        self.warning_out(f"{repo_owner_and_name} : {e}")
 
         self.info_out(f"{len(repositories)} repos, {pull_count} pulls, {clone_count} clones, {len(exclusions)} excluded")
 
     @typechecked()
     def pull_branches(self, repo_name: str, branches: Iterable, repo_dir: Path) -> bool:
 
-        git_repo = None
-        success = False
         try:
             git_repo = Repo(repo_dir)
         except InvalidGitRepositoryError as e:
             self.error_out(f"InvalidGitRepositoryError: {repo_name} , {repo_dir} , {e}")
+            git_repo = None
 
+        success = False
         if git_repo is not None:
             for branch in branches:
                 branch_name = branch.name
                 self.info_out(f'git pull "{repo_name}" branch:"{branch_name}"')
-                git_repo.git.checkout(branch_name)
-                git_repo.git.pull()
-                success = True
+                try:
+                    git_repo.git.checkout(branch_name)
+                    git_repo.git.pull()
+                    success = True
+                except GitCommandError as e:
+                    self.error_out(f"{repo_name} : {e}")
+                    success = False
+                    break
 
         return success
