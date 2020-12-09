@@ -152,7 +152,6 @@ class RunBackupWidget(QWidget):
         if preferences.backup_directory is None:
             log.error("backup directory not set")
         else:
-            self.countdown_text.setText("running ..")
             self.run_all.start()
 
     def stop(self):

@@ -59,6 +59,9 @@ class BupDialog(QDialog):
                     if next_backup_time_delta.total_seconds() <= 0.0:
                         # timer is up - start the backup
                         self.run_backup_widget.start()
+
+            if self.run_backup_widget.run_all.isRunning():
+                self.run_backup_widget.countdown_text.setText("running ..")
         else:
             self.run_backup_widget.countdown_text.setText(f"(automatic backup not enabled)")
 
