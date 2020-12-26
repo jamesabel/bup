@@ -1,5 +1,5 @@
 from balsa import get_logger
-from pref import PrefDict, PrefOrderedSet
+from pref import Pref, PrefOrderedSet
 from attr import attrib, attrs
 
 from bup import __application_name__, __author__, UITypes
@@ -9,7 +9,7 @@ log = get_logger(__application_name__)
 
 
 @attrs
-class BupPreferences(PrefDict):
+class BupPreferences(Pref):
 
     backup_directory: str = attrib(default=None)
 
@@ -25,9 +25,9 @@ class BupPreferences(PrefDict):
     backup_period: int = attrib(default=None)  # hours
     most_recent_backup: int = attrib(default=None)  # epoch in seconds
 
-    dry_run: bool = attrib(default=None)
+    dry_run: bool = attrib(default=False)
 
-    verbose: bool = attrib(default=None)
+    verbose: bool = attrib(default=False)
 
     height: int = attrib(default=None)
     width: int = attrib(default=None)
