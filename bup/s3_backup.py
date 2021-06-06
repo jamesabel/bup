@@ -109,28 +109,31 @@ class S3Backup(BupBase):
                     ls_command_line_str = " ".join(ls_command_line)
                     log.info(ls_command_line_str)
                     ls_result = subprocess.run(ls_command_line_str, stdout=subprocess.PIPE, shell=True, env=env_var)
-                    count += 1
                     ls_stdout = "".join([c for c in ls_result.stdout.decode(decoding) if c not in " \r\n"])  # remove all whitespace
-                    ls_parsed = ls_re.search(ls_stdout)
-                    if ls_parsed is None:
-                        log.error(f"parse error:\n{ls_command_line_str=}\n{ls_stdout=}")
+                    if len(ls_stdout) == 0:
+                        self.error_out(f'"{ls_command_line_str}" failed ({ls_stdout=}) - check internet connection')
                     else:
-                        s3_object_count = int(ls_parsed.group(1))
-                        s3_total_size = int(ls_parsed.group(2))
-                        local_size, local_count = get_dir_size(destination)
-
-                        # rough check that the sync worked
-                        if s3_total_size > local_size:
-                            # we're missing files
-                            message = "not all files backed up"
-                            output_routine = self.error_out
-                        elif s3_total_size != local_size:
-                            # Compare size, not number of files, since aws s3 sync does not copy files of zero size.
-                            message = "mismatch"
-                            output_routine = self.warning_out
+                        ls_parsed = ls_re.search(ls_stdout)
+                        if ls_parsed is None:
+                            self.error_out(f"parse error:\n{ls_command_line_str=}\n{ls_stdout=}")
                         else:
-                            message = "match"
-                            output_routine = log.info
-                        output_routine(f"{bucket_name} : {message} (s3_count={s3_object_count}, local_count={local_count}; s3_total_size={s3_total_size}, local_size={local_size})")
+                            count += 1
+                            s3_object_count = int(ls_parsed.group(1))
+                            s3_total_size = int(ls_parsed.group(2))
+                            local_size, local_count = get_dir_size(destination)
+
+                            # rough check that the sync worked
+                            if s3_total_size > local_size:
+                                # we're missing files
+                                message = "not all files backed up"
+                                output_routine = self.error_out
+                            elif s3_total_size != local_size:
+                                # Compare size, not number of files, since aws s3 sync does not copy files of zero size.
+                                message = "mismatch"
+                                output_routine = self.warning_out
+                            else:
+                                message = "match"
+                                output_routine = log.info
+                            output_routine(f"{bucket_name} : {message} (s3_count={s3_object_count}, local_count={local_count}; s3_total_size={s3_total_size}, local_size={local_size})")
 
         self.info_out(f"{len(buckets)} buckets, {count} backed up, {len(exclusions)} excluded")
