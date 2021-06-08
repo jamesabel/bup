@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTabWidget
 from PyQt5.QtGui import QCloseEvent
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import QTimer, Qt
 
 from bup import __application_name__, __version__, get_preferences, UITypes
 from bup.gui import PreferencesWidget, RunBackupWidget, BupAbout
@@ -12,6 +12,8 @@ class BupDialog(QDialog):
         super().__init__()
 
         self.setWindowTitle(f"{__application_name__} ({__version__})")
+        self.setWindowFlag(Qt.WindowMinimizeButtonHint, True)
+        self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
 
         self.setLayout(QVBoxLayout())
 
