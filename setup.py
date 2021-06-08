@@ -22,8 +22,11 @@ setup(
     download_url=__download_url__,
     keywords=["aws", "dynamodb", "s3", "github", "backup"],
     packages=find_packages(),
-    data_files=[('', ["LICENSE", "LICENSE.txt", "gpl-3.0.md", "README.md"])],  # will be installed in the application parent directory
-    package_data={__title__: [readme_file_path]},
+
+    # will be installed in the application parent directory
+    data_files=[('', ["LICENSE", "LICENSE.txt", "gpl-3.0.md", readme_file_path])],
+
+    package_data={__title__: [f"{__title__}.png"]},
     install_requires=["ismain", "balsa", "boto3", "typeguard", "hashy", "dictim", "awsimple", "pressenter2exit", "awscli", "GitPython", "github3.py", "sqlitedict", "tobool", "attrs",
                       "appdirs", "pref", "pyqt5"],
     classifiers=[],

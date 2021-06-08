@@ -1,15 +1,23 @@
 from datetime import datetime, timedelta
+import ctypes
+
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTabWidget
-from PyQt5.QtGui import QCloseEvent
+from PyQt5.QtGui import QCloseEvent, QIcon
 from PyQt5.QtCore import QTimer, Qt
 
-from bup import __application_name__, __version__, get_preferences, UITypes
-from bup.gui import PreferencesWidget, RunBackupWidget, BupAbout
+from bup import __application_name__, __version__, __author__, get_preferences, UITypes
+from bup.gui import PreferencesWidget, RunBackupWidget, BupAbout, get_icon_path
 
 
 class BupDialog(QDialog):
     def __init__(self):
         super().__init__()
+
+        self.setWindowIcon(QIcon(str(get_icon_path())))
+
+        # set task bar icon (Windows only)
+        bup_app_id = f'{__author__}.{__application_name__}.{__version__}'  # arbitrary string
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(bup_app_id)
 
         self.setWindowTitle(f"{__application_name__} ({__version__})")
         self.setWindowFlag(Qt.WindowMinimizeButtonHint, True)
