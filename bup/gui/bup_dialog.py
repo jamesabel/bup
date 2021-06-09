@@ -13,7 +13,7 @@ class BupDialog(QDialog):
     def __init__(self):
         super().__init__()
 
-        self.setWindowIcon(QIcon(str(get_icon_path())))
+        self.setWindowIcon(QIcon(str(get_icon_path("png"))))
 
         # set task bar icon (Windows only)
         bup_app_id = f'{__author__}.{__application_name__}.{__version__}'  # arbitrary string
