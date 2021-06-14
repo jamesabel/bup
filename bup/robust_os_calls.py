@@ -1,8 +1,9 @@
-import os
 import stat
 import shutil
 import time
 import logging
+from os import chmod
+from pathlib import Path
 
 # robust OS functions
 
@@ -12,19 +13,19 @@ log = logging.getLogger(__application_name__)
 
 
 def remove_readonly(path: str):
-    os.chmod(path, stat.S_IWRITE)
+    chmod(path, stat.S_IWRITE)
 
 
 # sometimes needed for Windows
 def _remove_readonly_onerror(func, path, excinfo):
-    os.chmod(path, stat.S_IWRITE)
+    chmod(path, stat.S_IWRITE)
     func(path)
 
 
-def rmdir(p: str):
+def rmdir(p: Path):
     retry_count = 10
     delete_ok = False
-    while os.path.exists(p) and retry_count > 0:
+    while p.exists() and retry_count > 0:
         try:
             shutil.rmtree(p, onerror=_remove_readonly_onerror)
             delete_ok = True
@@ -35,24 +36,24 @@ def rmdir(p: str):
             log.info(str(e))
             time.sleep(1)
         retry_count -= 1
-    if os.path.exists(p):
+    if p.exists():
         log.error('could not remove "%s"' % p)
     return delete_ok and retry_count > 0
 
 
-def mkdirs(d: str, remove_first=False):
+def mkdirs(d: Path, remove_first=False):
     if remove_first:
         rmdir(d)
-    # sometimes when os.makedirs exits the dir is not actually there
+    # sometimes when Path.mkdir() exits the dir is not actually there
     count = 600
-    while count > 0 and not os.path.exists(d):
+    while count > 0 and not d.exists():
         try:
             # for some reason we can get the FileNotFoundError exception
-            os.makedirs(d, exist_ok=True)
+            d.mkdir(parents=True, exist_ok=True)
         except FileNotFoundError:
             pass
-        if not os.path.exists(d):
+        if not d.exists():
             time.sleep(0.1)
         count -= 1
-    if not os.path.exists(d):
-        log.error(f'could not mkdirs "{d}" ({os.path.abspath(d)})')
+    if not d.exists():
+        log.error(f'could not mkdirs "{d}" ({d.absolute()})')
