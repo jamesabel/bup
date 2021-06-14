@@ -8,7 +8,7 @@ from copy import deepcopy
 from awsimple import S3Access
 from balsa import get_logger
 
-from bup import __application_name__, __version__, BupBase, BackupTypes, get_preferences, ExclusionPreferences
+from bup import __application_name__, BupBase, BackupTypes, get_preferences, ExclusionPreferences
 
 log = get_logger(__application_name__)
 
@@ -50,11 +50,11 @@ class S3Backup(BupBase):
         self.info_out(f"backing up {len(buckets)} buckets")
 
         count = 0
-        exclusions = ExclusionPreferences(BackupTypes.S3.name).get()
+        exclusions_no_comments = ExclusionPreferences(BackupTypes.S3.name).get_no_comments()
         for bucket_name in buckets:
 
             # do the sync
-            if bucket_name in exclusions:
+            if bucket_name in exclusions_no_comments:
                 self.info_out(f"excluding {bucket_name}")
             else:
                 if dry_run:
@@ -136,4 +136,4 @@ class S3Backup(BupBase):
                                 output_routine = log.info
                             output_routine(f"{bucket_name} : {message} (s3_count={s3_object_count}, local_count={local_count}; s3_total_size={s3_total_size}, local_size={local_size})")
 
-        self.info_out(f"{len(buckets)} buckets, {count} backed up, {len(exclusions)} excluded")
+        self.info_out(f"{len(buckets)} buckets, {count} backed up, {len(exclusions_no_comments)} excluded")

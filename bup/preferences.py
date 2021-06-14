@@ -66,6 +66,6 @@ class ExclusionPreferences(PrefOrderedSet):
     def __init__(self, exclusion_type: str):
         super().__init__(__application_name__, __author__, f"exclusions_{exclusion_type}")
 
-    def get(self) -> List[str]:
+    def get_no_comments(self) -> List[str]:
         # get list of exclusions with comment lines removed
         return [s for s in super().get() if len(s) > 0 and s[0] != "#"]

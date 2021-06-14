@@ -15,7 +15,7 @@ class DynamoDBBackup(BupBase):
         preferences = get_preferences(self.ui_type)
         backup_directory = preferences.backup_directory
         dry_run = preferences.dry_run
-        exclusions = ExclusionPreferences(self.backup_type.name).get()
+        exclusions = ExclusionPreferences(self.backup_type.name).get_no_comments()
 
         tables = DynamoDBAccess(profile_name=preferences.aws_profile).get_table_names()
         self.info_out(f"backing up {len(tables)} DynamoDB tables")

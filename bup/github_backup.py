@@ -21,7 +21,7 @@ class GithubBackup(BupBase):
 
         preferences = get_preferences(self.ui_type)
         dry_run = preferences.dry_run
-        exclusions = ExclusionPreferences(BackupTypes.github.name).get()
+        exclusions = ExclusionPreferences(BackupTypes.github.name).get_no_comments()
 
         backup_dir = Path(preferences.backup_directory, "github")
         gh = github3.login(token=preferences.github_token)
