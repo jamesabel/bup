@@ -1,6 +1,7 @@
 from balsa import get_logger
 from pref import Pref, PrefOrderedSet
 from attr import attrib, attrs
+from typing import List
 
 from bup import __application_name__, __author__, UITypes
 
@@ -64,3 +65,7 @@ def get_preferences(ui_type: UITypes) -> BupPreferences:
 class ExclusionPreferences(PrefOrderedSet):
     def __init__(self, exclusion_type: str):
         super().__init__(__application_name__, __author__, f"exclusions_{exclusion_type}")
+
+    def get(self) -> List[str]:
+        # get list of exclusions with comment lines removed
+        return [s for s in super().get() if len(s) > 0 and s[0] != "#"]
