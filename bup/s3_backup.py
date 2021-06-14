@@ -47,7 +47,7 @@ class S3Backup(BupBase):
         ls_re = re.compile(r"TotalObjects:([0-9]+)TotalSize:([0-9]+)")
 
         buckets = s3_access.bucket_list()
-        self.info_out(f"backing up {len(buckets)} buckets")
+        self.info_out(f"found {len(buckets)} buckets")
 
         count = 0
         exclusions_no_comments = ExclusionPreferences(BackupTypes.S3.name).get_no_comments()

@@ -18,12 +18,12 @@ class DynamoDBBackup(BupBase):
         exclusions = ExclusionPreferences(self.backup_type.name).get_no_comments()
 
         tables = DynamoDBAccess(profile_name=preferences.aws_profile).get_table_names()
-        self.info_out(f"backing up {len(tables)} DynamoDB tables")
+        self.info_out(f"found {len(tables)} DynamoDB tables")
         count = 0
         for table_name in tables:
 
             # awsimple will update immediately if number of table rows changes, but backup from scratch every so often to be safe
-            cache_life = timedelta(days=7).total_seconds()
+            cache_life = timedelta(days=1).total_seconds()
 
             if table_name in exclusions:
                 self.info_out(f"excluding {table_name}")
