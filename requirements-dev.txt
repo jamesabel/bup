@@ -2,7 +2,6 @@ awsimple
 balsa
 pressenter2exit
 boto3
-awscli
 github3.py
 GitPython
 typeguard
@@ -12,6 +11,7 @@ tobool
 attrs
 appdirs
 pref
+psutil
 #
 # dev
 wheel
