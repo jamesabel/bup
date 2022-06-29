@@ -84,9 +84,15 @@ class GithubBackup(BupBase):
             git_repo = None
 
         success = False
+        main_branch = None
         if git_repo is not None:
             for branch in branches:
                 branch_name = branch.name
+
+                # prefer "main" over "master"
+                if branch_name.lower() == "main" or (main_branch is None and branch_name.lower() == "master"):
+                    main_branch = branch
+
                 self.info_out(f'git pull "{repo_name}" branch:"{branch_name}"')
                 try:
                     git_repo.git.checkout(branch_name)
@@ -96,5 +102,11 @@ class GithubBackup(BupBase):
                     self.error_out(f"{repo_name} : {e}")
                     success = False
                     break
+
+            # if more than one branch, switch to main (or master) branch upon exit
+            if len(list(branches)) > 1 and main_branch is not None:
+                main_branch_name = main_branch.name
+                self.info_out(f'git switch "{repo_name}" branch:"{main_branch_name}"')
+                git_repo.git.switch(main_branch_name)
 
         return success
