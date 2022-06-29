@@ -5,6 +5,7 @@ import time
 import github3
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
+from github3.exceptions import AuthenticationFailed
 from balsa import get_logger
 from typeguard import typechecked
 
@@ -24,8 +25,13 @@ class GithubBackup(BupBase):
         exclusions = ExclusionPreferences(BackupTypes.github.name).get_no_comments()
 
         backup_dir = Path(preferences.backup_directory, "github")
-        gh = github3.login(token=preferences.github_token)
-        repositories = list(gh.repositories())
+
+        try:
+            gh = github3.login(token=preferences.github_token)
+            repositories = list(gh.repositories())  # this actually throws the authentication error
+        except AuthenticationFailed:
+            log.error("github authentication failed")
+            return
 
         clone_count = 0
         pull_count = 0
