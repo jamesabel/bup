@@ -8,7 +8,7 @@ from balsa import get_logger
 from bup import BackupTypes, S3Backup, DynamoDBBackup, GithubBackup, ExclusionPreferences, UITypes, __application_name__
 from bup.gui import get_gui_preferences
 
-max_text_lines = 100
+max_text_lines = 1000
 
 backup_classes = {BackupTypes.S3: S3Backup, BackupTypes.DynamoDB: DynamoDBBackup, BackupTypes.github: GithubBackup}
 
