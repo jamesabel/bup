@@ -2,9 +2,13 @@ import pickle
 from datetime import timedelta
 from pathlib import Path
 
+from botocore.exceptions import ClientError
 from awsimple import DynamoDBAccess, dynamodb_to_json
+from balsa import get_logger
 
-from bup import BupBase, BackupTypes, get_preferences, ExclusionPreferences
+from bup import BupBase, BackupTypes, get_preferences, ExclusionPreferences, __application_name__
+
+log = get_logger(__application_name__)
 
 
 class DynamoDBBackup(BupBase):
@@ -17,7 +21,12 @@ class DynamoDBBackup(BupBase):
         dry_run = preferences.dry_run
         exclusions = ExclusionPreferences(self.backup_type.name).get_no_comments()
 
-        tables = DynamoDBAccess(profile_name=preferences.aws_profile).get_table_names()
+        dynamodb_access = DynamoDBAccess(profile_name=preferences.aws_profile)
+        try:
+            tables = dynamodb_access.get_table_names()
+        except ClientError as e:
+            log.warning(e)
+            tables = []
         self.info_out(f"found {len(tables)} DynamoDB tables")
         count = 0
         for table_name in tables:
