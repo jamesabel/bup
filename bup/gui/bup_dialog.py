@@ -75,7 +75,7 @@ class BupDialog(QDialog):
                 ticks = '.' * (self.tick_count % 4)
                 self.run_backup_widget.countdown_text.setText(f"running {ticks}")
         else:
-            self.run_backup_widget.countdown_text.setText(f"(automatic backup not enabled)")
+            self.run_backup_widget.countdown_text.setText("(automatic backup not enabled)")
         self.tick_count += 1
 
     def closeEvent(self, close_event: QCloseEvent) -> None:
