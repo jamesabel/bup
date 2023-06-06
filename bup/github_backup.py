@@ -28,7 +28,11 @@ class GithubBackup(BupBase):
 
         try:
             gh = github3.login(token=preferences.github_token)
-            repositories = list(gh.repositories())  # this actually throws the authentication error
+            if gh is None:
+                log.warning("could not login to github")
+                repositories = []
+            else:
+                repositories = list(gh.repositories())  # this actually throws the authentication error
         except AuthenticationFailed:
             log.error("github authentication failed")
             return
