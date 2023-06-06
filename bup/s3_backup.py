@@ -89,20 +89,22 @@ class S3Backup(BupBase):
                     os.makedirs(destination, exist_ok=True)
                     s3_bucket_path = f"s3://{bucket_name}"
                     # Don't use --delete.  We want to keep 'old' files locally.
-                    sync_command_line = [aws_cli_path, "s3", "sync", s3_bucket_path, str(destination.absolute())]
+                    sync_command_line = [aws_cli_path, "s3", "sync", s3_bucket_path, f'"{destination.absolute()}"']
                     if dry_run:
                         sync_command_line.append("--dryrun")
                     sync_command_line_str = " ".join(sync_command_line)
                     log.info(sync_command_line_str)
 
                     try:
-                        sync_result = subprocess.run(sync_command_line_str, stdout=subprocess.PIPE, shell=True, env=env_var)
+                        sync_result = subprocess.run(sync_command_line_str, shell=True, env=env_var, capture_output=True)
                     except FileNotFoundError as e:
                         self.error_out(f'error executing {" ".join(sync_command_line)} {e}')
                         return
 
                     for line in sync_result.stdout.decode(decoding).splitlines():
                         log.info(line.strip())
+                    for line in sync_result.stderr.decode(decoding).splitlines():
+                        self.warning_out(line.strip())
 
                     # check the results
                     ls_command_line = [aws_cli_path, "s3", "ls", "--summarize", "--recursive", s3_bucket_path]
