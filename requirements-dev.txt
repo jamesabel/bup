@@ -22,6 +22,7 @@ pytest-cov
 pyship
 flake8
 sentry_sdk
+PyQt5-stubs
 #
 # pyqt5-tools had an install issue. I don't think I need it anyway.
 # pyqt5-tools
