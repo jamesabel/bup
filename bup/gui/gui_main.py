@@ -20,4 +20,5 @@ def gui_main():
         bup_gui.show()
         app.exec_()
     except Exception as e:
+        log.error(e)
         log.exception(e)
