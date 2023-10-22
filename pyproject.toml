@@ -1,5 +1,14 @@
 [project]
 name = "bup"
+dynamic = ["version"]
+description = "Backup utility"
+readme = "README.md"
+
+[tool.setuptools.dynamic]
+version = {attr = "bup.__version__"}
+
+[tool.hatch.version]
+path = "bup/__version__.py"
 
 [tool.pyship]
 is_gui = true
