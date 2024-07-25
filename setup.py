@@ -28,6 +28,6 @@ setup(
 
     package_data={__title__: [f"{__title__}.png", f"{__title__}.ico"]},
     install_requires=["ismain", "balsa", "boto3", "typeguard", "hashy", "dictim", "awsimple", "pressenter2exit", "awscli", "GitPython", "github3.py", "sqlitedict", "tobool", "attrs",
-                      "appdirs", "pref", "pyqt5"],
+                      "appdirs", "pref", "pyqt5", "python-dotenv", "sentry-sdk"],
     classifiers=[],
 )
