@@ -2,6 +2,7 @@ import stat
 import shutil
 import time
 import logging
+import os
 from os import chmod
 from pathlib import Path
 
@@ -10,6 +11,16 @@ from pathlib import Path
 from bup import __application_name__
 
 log = logging.getLogger(__application_name__)
+
+
+def make_long_path_compatible(path: Path) -> str:
+    """
+    Converts a Path object to a long path string compatible with Windows.
+    """
+    path_str = str(path.resolve())
+    if os.name.lower() == 'nt' and not path_str.startswith('\\\\?\\'):
+        path_str = '\\\\?\\' + path_str
+    return path_str
 
 
 def remove_readonly(path: Path):
@@ -32,7 +43,8 @@ def rmdir(p: Path):
     delete_ok = False
     while p.exists() and retry_count > 0:
         try:
-            shutil.rmtree(p, onerror=_remove_readonly_onerror)
+            _p = make_long_path_compatible(p)
+            shutil.rmtree(_p, onerror=_remove_readonly_onerror)
             delete_ok = True
         except FileNotFoundError as e:
             log.debug(str(e))  # this can happen when first doing the shutil.rmtree()
