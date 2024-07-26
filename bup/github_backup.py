@@ -67,14 +67,18 @@ class GithubBackup(BupBase):
                         if repo_dir.exists():
                             rmdir(repo_dir)
 
-                        self.info_out(f'git clone "{repo_owner_and_name}"')
-
-                        Repo.clone_from(github_repo.clone_url, repo_dir)
-                        time.sleep(1.0)
-                        self.pull_branches(repo_owner_and_name, branches, repo_dir)
-                        clone_count += 1
+                        if repo_dir.exists():
+                            self.error_out(f'could not remove "{repo_dir}" - may require manual removal')
+                        else:
+                            self.info_out(f'git clone "{repo_owner_and_name}"')
+                            Repo.clone_from(github_repo.clone_url, repo_dir)
+                            time.sleep(1.0)
+                            self.pull_branches(repo_owner_and_name, branches, repo_dir)
+                            clone_count += 1
                     except PermissionError as e:
-                        self.warning_out(f"{repo_owner_and_name} : {e}")
+                        self.warning_out(f'{repo_owner_and_name},"{repo_dir}",{e}')
+                    except GitCommandError as e:
+                        self.warning_out(f'{repo_owner_and_name},"{repo_dir}",{e}')
 
         self.info_out(f"{len(repositories)} repos, {pull_count} pulls, {clone_count} clones, {len(exclusions)} excluded")
 

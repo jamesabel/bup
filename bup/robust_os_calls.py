@@ -12,18 +12,18 @@ from bup import __application_name__
 log = logging.getLogger(__application_name__)
 
 
-def remove_readonly(path: str):
-    chmod(path, stat.S_IWRITE)
+def remove_readonly(path: Path):
+    chmod(path, stat.S_IWRITE | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)
 
 
 # sometimes needed for Windows
 def _remove_readonly_onerror(func, path, excinfo):
     _path = Path(path)
     if _path.is_file():
-        chmod(_path, stat.S_IWRITE)
+        remove_readonly(_path)
     else:
         for p in _path.rglob('*'):
-            chmod(p, stat.S_IWRITE)
+            remove_readonly(p)
     func(path)
 
 
@@ -38,6 +38,9 @@ def rmdir(p: Path):
             log.debug(str(e))  # this can happen when first doing the shutil.rmtree()
             time.sleep(1)
         except PermissionError as e:
+            log.info(str(e))
+            time.sleep(1)
+        except OSError as e:
             log.info(str(e))
             time.sleep(1)
         retry_count -= 1
