@@ -18,7 +18,12 @@ def remove_readonly(path: str):
 
 # sometimes needed for Windows
 def _remove_readonly_onerror(func, path, excinfo):
-    chmod(path, stat.S_IWRITE)
+    _path = Path(path)
+    if _path.is_file():
+        chmod(_path, stat.S_IWRITE)
+    else:
+        for p in _path.rglob('*'):
+            chmod(p, stat.S_IWRITE)
     func(path)
 
 
