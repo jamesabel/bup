@@ -59,7 +59,7 @@ class GithubBackup(BupBase):
                         if pull_success := self.pull_branches(repo_owner_and_name, branches, repo_dir):
                             pull_count += 1
                     except GitCommandError as e:
-                        self.warning_out(f'could not pull "{repo_dir}" - will try to start over and do a clone of "{repo_owner_and_name} {e}"')
+                        self.warning_out(f'could not pull "{repo_dir}" - will try to start over and do a clone of "{repo_owner_and_name},{e}","{__file__}"')
 
                 # new to us - clone the repo
                 if not pull_success:
@@ -76,9 +76,9 @@ class GithubBackup(BupBase):
                             self.pull_branches(repo_owner_and_name, branches, repo_dir)
                             clone_count += 1
                     except PermissionError as e:
-                        self.warning_out(f'{repo_owner_and_name},"{repo_dir}",{e}')
+                        self.warning_out(f'{repo_owner_and_name},"{repo_dir}",{e},"{__file__}"')
                     except GitCommandError as e:
-                        self.warning_out(f'{repo_owner_and_name},"{repo_dir}",{e}')
+                        self.warning_out(f'{repo_owner_and_name},"{repo_dir}",{e},"{__file__}"')
 
         self.info_out(f"{len(repositories)} repos, {pull_count} pulls, {clone_count} clones, {len(exclusions)} excluded")
 
@@ -88,7 +88,7 @@ class GithubBackup(BupBase):
         try:
             git_repo = Repo(repo_dir)
         except InvalidGitRepositoryError as e:
-            self.error_out(f"InvalidGitRepositoryError: {repo_name} , {repo_dir} , {e}")
+            self.error_out(f'InvalidGitRepositoryError: {repo_name},"{repo_dir}",{e},"{__file__}"')
             git_repo = None
 
         success = False
@@ -107,7 +107,11 @@ class GithubBackup(BupBase):
                     git_repo.git.pull()
                     success = True
                 except GitCommandError as e:
-                    self.error_out(f"{repo_name} : {e}")
+                    if "did not match any file".lower() in str(e).lower():
+                        # new branch - this is normal - we'll do a full clone if this happens
+                        self.info_out(f"git pull {repo_name} branch:{branch_name} - no files")
+                    else:
+                        self.error_out(f"{repo_name} : {e}")
                     success = False
                     break
 
