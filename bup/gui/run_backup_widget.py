@@ -25,6 +25,7 @@ class RunAll(QThread):
             self.widget.backup_engines[backup_type].start()
         for backup_type in self.widget.backup_engines:
             self.widget.backup_engines[backup_type].wait()
+        self.widget.most_recent_backup = int(round(datetime.now().timestamp()))
 
 
 def get_local_time_string() -> str:
@@ -147,7 +148,6 @@ class RunBackupWidget(QWidget):
         self.restore_state()
 
     def start(self):
-        self.most_recent_backup = int(round(datetime.now().timestamp()))  # set after all runs successfully finished
         preferences = get_gui_preferences()
         if preferences.backup_directory is None:
             log.error("backup directory not set")

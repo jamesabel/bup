@@ -19,10 +19,10 @@ freeze_support()
 def get_dir_size(dir_path: Path):
     dir_size = 0
     file_count = 0
-    for dir_path, _, file_names in os.walk(dir_path):
+    for root, _, file_names in os.walk(dir_path):
         for file_name in file_names:
             file_count += 1
-            dir_size += os.path.getsize(os.path.join(dir_path, file_name))
+            dir_size += os.path.getsize(os.path.join(root, file_name))
     return dir_size, file_count
 
 

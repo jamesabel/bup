@@ -50,7 +50,7 @@ class GithubBackup(BupBase):
                 self.info_out(f'dry run {repo_owner_and_name}')
             else:
                 repo_dir = Path(backup_dir, repo_owner_and_name).absolute()
-                branches = github_repo.branches()
+                branches = list(github_repo.branches())
 
                 # if we've cloned previously, just do a pull
                 pull_success = False
