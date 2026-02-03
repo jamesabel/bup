@@ -26,6 +26,7 @@ def arguments():
         parser.add_argument("path", help="directory to back up to")
         parser.add_argument("-s", "--s3", action="store_true", default=False, help="backup AWS S3")
         parser.add_argument("-d", "--dynamodb", action="store_true", default=False, help="backup AWS DynamoDB")
+        parser.add_argument("-a", "--aws", action="store_true", default=False, help="backup both AWS S3 and DynamoDB")
         parser.add_argument("-g", "--github", action="store_true", default=False, help="backup github")
         parser.add_argument(
             "-e",

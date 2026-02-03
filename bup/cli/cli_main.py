@@ -35,11 +35,11 @@ def cli_main(args):
         dynamodb_local_backup = None
         s3_local_backup = None
         github_local_backup = None
-        if args.s3:
+        if args.s3 or args.aws:
             s3_local_backup = S3Backup(ui_type, log.info, log.warning, log.error)
             s3_local_backup.start()
             did_something = True
-        if args.dynamodb:
+        if args.dynamodb or args.aws:
             dynamodb_local_backup = DynamoDBBackup(ui_type, log.info, log.warning, log.error)
             dynamodb_local_backup.start()
             did_something = True
