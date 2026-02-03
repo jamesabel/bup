@@ -20,6 +20,7 @@ class BupBase(QThread):
     @typechecked()
     def __init__(self, ui_type: UITypes, info_out: Callable, warning_out: Callable, error_out: Callable):
         super().__init__()
+        self._stop_requested = False
         self.ui_type = ui_type
         self.caller_info_out = info_out
         self.caller_warning_out = warning_out
@@ -27,6 +28,13 @@ class BupBase(QThread):
         self.info_out_signal.connect(self._info_out)
         self.warning_out_signal.connect(self._warning_out)
         self.error_out_signal.connect(self._error_out)
+
+    def request_stop(self):
+        self._stop_requested = True
+
+    @property
+    def stop_requested(self) -> bool:
+        return self._stop_requested
 
     def info_out(self, s: str):
         # callees could call emit(), but that seems awkward so provide this method

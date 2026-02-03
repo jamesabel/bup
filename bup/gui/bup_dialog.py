@@ -79,6 +79,9 @@ class BupDialog(QDialog):
         self.tick_count += 1
 
     def closeEvent(self, close_event: QCloseEvent) -> None:
+        self.autobackup_timer.stop()
+        self.run_backup_widget.stop()
+        self.run_backup_widget.wait_for_threads(5000)
         self.run_backup_widget.save_state()
         preferences = get_preferences(UITypes.gui)
         preferences.width = self.width()

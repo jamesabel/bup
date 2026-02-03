@@ -52,6 +52,8 @@ class S3Backup(BupBase):
         count = 0
         exclusions_no_comments = ExclusionPreferences(BackupTypes.S3.name).get_no_comments()
         for bucket_name in buckets:
+            if self.stop_requested:
+                break
 
             # do the sync
             if bucket_name in exclusions_no_comments:

@@ -30,6 +30,8 @@ class DynamoDBBackup(BupBase):
         self.info_out(f"found {len(tables)} DynamoDB tables")
         count = 0
         for table_name in tables:
+            if self.stop_requested:
+                break
 
             # awsimple will update immediately if number of table rows changes, but backup from scratch every so often to be safe
             cache_life = timedelta(days=1).total_seconds()

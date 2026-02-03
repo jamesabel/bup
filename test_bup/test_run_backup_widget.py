@@ -81,4 +81,4 @@ def test_stop(patched_run_backup_widget):
     widget, _, mock_engines = patched_run_backup_widget
     widget.stop()
     for bt in BackupTypes:
-        mock_engines[bt].terminate.assert_called_once()
+        mock_engines[bt].request_stop.assert_called_once()

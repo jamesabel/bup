@@ -32,6 +32,8 @@ def _make_fake_run_backup_widget(parent=None):
     w.countdown_text = QLabel(parent=w)
     w.most_recent_backup = None
     w.save_state = MagicMock()
+    w.stop = MagicMock()
+    w.wait_for_threads = MagicMock()
     w.run_all = MagicMock()
     w.run_all.isRunning.return_value = False
     return w

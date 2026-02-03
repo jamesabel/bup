@@ -41,6 +41,8 @@ class GithubBackup(BupBase):
         pull_count = 0
 
         for github_repo in repositories:
+            if self.stop_requested:
+                break
 
             repo_owner_and_name = str(github_repo)
             repo_name = repo_owner_and_name.split("/")[-1]
@@ -95,6 +97,8 @@ class GithubBackup(BupBase):
         main_branch = None
         if git_repo is not None:
             for branch in branches:
+                if self.stop_requested:
+                    break
                 branch_name = branch.name
 
                 # prefer "main" over "master"
