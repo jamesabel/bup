@@ -16,7 +16,11 @@
       "Bash(C:UsersJamesAbelprojectsbupvenvScriptspython.exe -m pytest C:UsersJamesAbelprojectsbuptest_bup -v --tb=short)",
       "Bash(\"C:/Users/JamesAbel/projects/bup/venv/Scripts/python.exe\" -m pytest \"C:/Users/JamesAbel/projects/bup/test_bup/\" -v --tb=short)",
       "Bash(git push)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git log:*)",
+      "Bash(venvScriptspytest.exe)",
+      "Bash(cmd /c \"set PYTHONPATH=%CD% && venv\\\\Scripts\\\\pytest.exe\")",
+      "Bash(PYTHONPATH=. ./venv/Scripts/pytest.exe:*)"
     ]
   }
 }
