@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(del nul)",
+      "Bash(del \"C:\\\\Users\\\\JamesAbel\\\\projects\\\\bup\\\\test_bup\\\\test_preferences_gui.py\")",
+      "Bash(set PYTHONPATH=%CD%)",
+      "Bash(venvScriptspytest.exe test_bup/ -v)",
+      "Bash(cmd.exe /c \"cd /d C:\\\\Users\\\\JamesAbel\\\\projects\\\\bup && set PYTHONPATH=C:\\\\Users\\\\JamesAbel\\\\projects\\\\bup && venv\\\\Scripts\\\\pytest.exe test_bup/ -v\")",
+      "Bash(cmd.exe /c \"cd /d C:\\\\Users\\\\JamesAbel\\\\projects\\\\bup && set PYTHONPATH=C:\\\\Users\\\\JamesAbel\\\\projects\\\\bup && venv\\\\Scripts\\\\pytest.exe test_bup\\\\ -v 2>&1\":*)",
+      "Bash(cmd.exe /c \"cd /d C:\\\\Users\\\\JamesAbel\\\\projects\\\\bup && set PYTHONPATH=C:\\\\Users\\\\JamesAbel\\\\projects\\\\bup && venv\\\\Scripts\\\\pytest.exe test_bup\\\\ -v > test_output.txt 2>&1\")",
+      "Bash(cmd /c \"cd /d C:\\\\Users\\\\JamesAbel\\\\projects\\\\bup & set PYTHONPATH=C:\\\\Users\\\\JamesAbel\\\\projects\\\\bup & venv\\\\Scripts\\\\pytest.exe test_bup\\\\ -v\")",
+      "Bash(C:UsersJamesAbelprojectsbupvenvScriptspython.exe -m pytest C:UsersJamesAbelprojectsbuptest_bup -v --tb=short)",
+      "Bash(\"C:/Users/JamesAbel/projects/bup/venv/Scripts/python.exe\" -m pytest \"C:/Users/JamesAbel/projects/bup/test_bup/\" -v --tb=short)",
+      "Bash(git push)",
+      "Bash(git push:*)"
+    ]
+  }
+}
