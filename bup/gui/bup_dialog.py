@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 import ctypes
 
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTabWidget
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTabWidget, QMessageBox
 from PyQt5.QtGui import QCloseEvent, QIcon
 from PyQt5.QtCore import QTimer, Qt
 
@@ -79,6 +79,24 @@ class BupDialog(QDialog):
         self.tick_count += 1
 
     def closeEvent(self, close_event: QCloseEvent) -> None:
+        if self.run_backup_widget.run_all.isRunning():
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("Backup In Progress")
+            msg_box.setText("A backup is currently running.")
+            msg_box.setInformativeText("Do you want to stop the backup and exit, or cancel and keep running?")
+            msg_box.setIcon(QMessageBox.Warning)
+            stop_and_exit_button = msg_box.addButton("Stop and Exit", QMessageBox.DestructiveRole)
+            cancel_button = msg_box.addButton("Cancel", QMessageBox.RejectRole)
+            msg_box.setDefaultButton(cancel_button)
+            msg_box.exec_()
+
+            if msg_box.clickedButton() == cancel_button:
+                close_event.ignore()
+                return
+
+        self.autobackup_timer.stop()
+        self.run_backup_widget.stop()
+        self.run_backup_widget.wait_for_threads(5000)
         self.run_backup_widget.save_state()
         preferences = get_preferences(UITypes.gui)
         preferences.width = self.width()

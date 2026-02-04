@@ -41,6 +41,8 @@ class GithubBackup(BupBase):
         pull_count = 0
 
         for github_repo in repositories:
+            if self.stop_requested:
+                break
 
             repo_owner_and_name = str(github_repo)
             repo_name = repo_owner_and_name.split("/")[-1]
@@ -50,7 +52,7 @@ class GithubBackup(BupBase):
                 self.info_out(f'dry run {repo_owner_and_name}')
             else:
                 repo_dir = Path(backup_dir, repo_owner_and_name).absolute()
-                branches = github_repo.branches()
+                branches = list(github_repo.branches())
 
                 # if we've cloned previously, just do a pull
                 pull_success = False
@@ -95,6 +97,8 @@ class GithubBackup(BupBase):
         main_branch = None
         if git_repo is not None:
             for branch in branches:
+                if self.stop_requested:
+                    break
                 branch_name = branch.name
 
                 # prefer "main" over "master"
@@ -103,6 +107,8 @@ class GithubBackup(BupBase):
 
                 self.info_out(f'git pull "{repo_name}" branch:"{branch_name}"')
                 try:
+                    git_repo.git.reset("--hard")
+                    git_repo.git.clean("-fd")
                     git_repo.git.checkout(branch_name)
                     git_repo.git.pull()
                     success = True

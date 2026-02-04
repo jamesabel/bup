@@ -25,6 +25,7 @@ class RunAll(QThread):
             self.widget.backup_engines[backup_type].start()
         for backup_type in self.widget.backup_engines:
             self.widget.backup_engines[backup_type].wait()
+        self.widget.most_recent_backup = int(round(datetime.now().timestamp()))
 
 
 def get_local_time_string() -> str:
@@ -147,7 +148,7 @@ class RunBackupWidget(QWidget):
         self.restore_state()
 
     def start(self):
-        self.most_recent_backup = int(round(datetime.now().timestamp()))  # set after all runs successfully finished
+        self.most_recent_backup = int(round(datetime.now().timestamp()))
         preferences = get_gui_preferences()
         if preferences.backup_directory is None:
             log.error("backup directory not set")
@@ -156,7 +157,14 @@ class RunBackupWidget(QWidget):
 
     def stop(self):
         for backup_type in self.backup_engines:
-            self.backup_engines[backup_type].terminate()
+            self.backup_engines[backup_type].request_stop()
+
+    def wait_for_threads(self, timeout_ms: int = 5000):
+        if self.run_all.isRunning():
+            if not self.run_all.wait(timeout_ms):
+                for backup_type in self.backup_engines:
+                    self.backup_engines[backup_type].terminate()
+                self.run_all.terminate()
 
     def get_layout_key(self, backup_type: BackupTypes, display_type: DisplayTypes, height_width: str):
         return f"{backup_type.name}_{display_type.name}_{height_width}"

@@ -19,10 +19,10 @@ freeze_support()
 def get_dir_size(dir_path: Path):
     dir_size = 0
     file_count = 0
-    for dir_path, _, file_names in os.walk(dir_path):
+    for root, _, file_names in os.walk(dir_path):
         for file_name in file_names:
             file_count += 1
-            dir_size += os.path.getsize(os.path.join(dir_path, file_name))
+            dir_size += os.path.getsize(os.path.join(root, file_name))
     return dir_size, file_count
 
 
@@ -52,6 +52,8 @@ class S3Backup(BupBase):
         count = 0
         exclusions_no_comments = ExclusionPreferences(BackupTypes.S3.name).get_no_comments()
         for bucket_name in buckets:
+            if self.stop_requested:
+                break
 
             # do the sync
             if bucket_name in exclusions_no_comments:

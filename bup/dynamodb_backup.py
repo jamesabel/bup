@@ -30,6 +30,8 @@ class DynamoDBBackup(BupBase):
         self.info_out(f"found {len(tables)} DynamoDB tables")
         count = 0
         for table_name in tables:
+            if self.stop_requested:
+                break
 
             # awsimple will update immediately if number of table rows changes, but backup from scratch every so often to be safe
             cache_life = timedelta(days=1).total_seconds()
@@ -40,7 +42,7 @@ class DynamoDBBackup(BupBase):
                 self.info_out(f"dry run {table_name}")
             else:
                 self.info_out(f"{table_name}")
-                table = DynamoDBAccess(table_name, cache_life=cache_life)
+                table = DynamoDBAccess(table_name, profile_name=preferences.aws_profile, cache_life=cache_life)
                 table_contents = table.scan_table_cached()
 
                 dir_path = Path(backup_directory, "dynamodb")
@@ -51,4 +53,4 @@ class DynamoDBBackup(BupBase):
                     f.write(dynamodb_to_json(table_contents, indent=4))
                 count += 1
 
-        self.info_out(f"{count} tables, {count} backed up, {len(exclusions)} excluded")
+        self.info_out(f"{len(tables)} tables, {count} backed up, {len(exclusions)} excluded")
