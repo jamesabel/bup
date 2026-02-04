@@ -107,6 +107,8 @@ class GithubBackup(BupBase):
 
                 self.info_out(f'git pull "{repo_name}" branch:"{branch_name}"')
                 try:
+                    git_repo.git.reset("--hard")
+                    git_repo.git.clean("-fd")
                     git_repo.git.checkout(branch_name)
                     git_repo.git.pull()
                     success = True
