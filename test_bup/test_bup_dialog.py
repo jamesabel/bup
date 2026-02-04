@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock, PropertyMock
 import pytest
 
 from PyQt5.QtGui import QCloseEvent
-from PyQt5.QtWidgets import QWidget, QLabel, QCheckBox, QSpinBox
+from PyQt5.QtWidgets import QWidget, QLabel, QCheckBox, QSpinBox, QMessageBox
 
 
 def _make_mock_prefs(**overrides):
@@ -93,3 +93,37 @@ def test_close_event_saves_state(mock_bup_dialog):
     # width and height should have been written to preferences
     assert mock_prefs.width is not None
     assert mock_prefs.height is not None
+
+
+def test_close_event_cancel_when_running(mock_bup_dialog):
+    dialog, mock_prefs = mock_bup_dialog
+    dialog.run_backup_widget.run_all.isRunning.return_value = True
+    event = QCloseEvent()
+    cancel_button = MagicMock()
+    stop_button = MagicMock()
+    mock_msg_box = MagicMock()
+    mock_msg_box.addButton.side_effect = [stop_button, cancel_button]
+    mock_msg_box.clickedButton.return_value = cancel_button
+    with patch("bup.gui.bup_dialog.QMessageBox", return_value=mock_msg_box):
+        dialog.closeEvent(event)
+    assert not event.isAccepted()
+    dialog.run_backup_widget.save_state.assert_not_called()
+
+
+def test_close_event_stop_and_exit_when_running(mock_bup_dialog):
+    dialog, mock_prefs = mock_bup_dialog
+    dialog.run_backup_widget.run_all.isRunning.return_value = True
+    event = QCloseEvent()
+    cancel_button = MagicMock()
+    stop_button = MagicMock()
+    mock_msg_box = MagicMock()
+    mock_msg_box.addButton.side_effect = [stop_button, cancel_button]
+    mock_msg_box.clickedButton.return_value = stop_button
+    with patch("bup.gui.bup_dialog.QMessageBox", return_value=mock_msg_box) as mock_cls:
+        mock_cls.Warning = QMessageBox.Warning
+        mock_cls.DestructiveRole = QMessageBox.DestructiveRole
+        mock_cls.RejectRole = QMessageBox.RejectRole
+        dialog.closeEvent(event)
+    dialog.run_backup_widget.stop.assert_called_once()
+    dialog.run_backup_widget.wait_for_threads.assert_called_once_with(5000)
+    dialog.run_backup_widget.save_state.assert_called_once()
