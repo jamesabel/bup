@@ -137,3 +137,4 @@ app/
 *.nsi
 temp.*
 installers/
+settings.local.json
