@@ -1,4 +1,5 @@
 import subprocess
+import sys
 import os
 import re
 from pathlib import Path
@@ -65,21 +66,25 @@ class S3Backup(BupBase):
                     self.info_out(f"{bucket_name}")
 
                 # try to find the AWS CLI app
-                paths = [(Path("venv", "Scripts", "python.exe").absolute(), Path("venv", "Scripts", "aws").absolute()),  # local venv
-                         (Path("python.exe").absolute(), Path("Scripts", "aws").absolute())  # installed app
-                         ]
+                # Use sys.executable to reliably locate python and aws CLI in the same directory,
+                # which works for both local venv and installed app scenarios.
+                python_exe = Path(sys.executable)
+                aws_candidates = [
+                    (python_exe, python_exe.parent / "aws"),  # same dir as python (venv or installed app)
+                    (Path("venv", "Scripts", "python.exe").absolute(), Path("venv", "Scripts", "aws").absolute()),  # local venv from CWD
+                ]
                 aws_cli_path = None
                 python_path = None
-                for p, a in paths:
+                for p, a in aws_candidates:
                     if p.exists() and a.exists():
                         aws_cli_path = a
                         python_path = p
                         break
 
                 if aws_cli_path is None:
-                    log.error(f"AWS CLI executable not found ({paths=})")
+                    log.error(f"AWS CLI executable not found ({aws_candidates=})")
                 elif python_path is None:
-                    log.error(f"Python executable not found ({paths=})")
+                    log.error(f"Python executable not found ({aws_candidates=})")
                 else:
                     aws_cli_path = f'"{str(aws_cli_path)}"'  # from Path to str, with quotes for installed app
                     # AWS CLI app also needs the python executable to be in the path if it's not in the same dir, which happens when this program is installed.
