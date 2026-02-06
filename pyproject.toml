@@ -50,7 +50,7 @@ version = {attr = "bup.__version__.__version__"}
 include = ["bup*"]
 
 [tool.setuptools.package-data]
-bup = ["bup.png", "bup.ico"]
+bup = ["bup.png", "bup.ico", "LICENSE", "gpl-3.0.md"]
 
 [tool.hatch.version]
 path = "bup/__version__.py"
@@ -58,7 +58,7 @@ path = "bup/__version__.py"
 [tool.pyship]
 is_gui = true
 
-# registry settings pyship is using has been flagging a false positve on windows defender so don't use run_on_startup for now
+# registry settings pyship is using has been flagging a false positve on Windows defender so don't use run_on_startup for now
 run_on_startup = false
 
 [tool.pytest.ini_options]
