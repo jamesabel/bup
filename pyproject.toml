@@ -1,11 +1,56 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "bup"
 dynamic = ["version"]
-description = "Backup utility"
+description = "backup all your AWS S3 buckets and DynamoDB tables, and github repos to a backup directory/folder"
 readme = "README.md"
+license = "GPL-3.0-only"
+requires-python = ">=3.13"
+authors = [
+    {name = "abel", email = "j@abel.co"},
+]
+keywords = ["aws", "dynamodb", "s3", "github", "backup"]
+classifiers = []
+dependencies = [
+    "ismain",
+    "balsa",
+    "boto3",
+    "typeguard",
+    "hashy",
+    "dictim",
+    "awsimple",
+    "pressenter2exit",
+    "awscli",
+    "GitPython",
+    "github3.py",
+    "sqlitedict",
+    "tobool",
+    "attrs",
+    "appdirs",
+    "pref",
+    "pyqt5",
+    "python-dotenv",
+    "sentry-sdk",
+]
+
+[project.urls]
+Homepage = "https://github.com/jamesabel/bup"
+Download = "https://github.com/jamesabel/bup"
+
+[project.scripts]
+bup = "bup.__main__:main"
 
 [tool.setuptools.dynamic]
-version = {attr = "bup.__version__"}
+version = {attr = "bup.__version__.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["bup*"]
+
+[tool.setuptools.package-data]
+bup = ["bup.png", "bup.ico"]
 
 [tool.hatch.version]
 path = "bup/__version__.py"
