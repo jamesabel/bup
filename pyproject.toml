@@ -57,6 +57,8 @@ path = "bup/__version__.py"
 
 [tool.pyship]
 is_gui = true
+upload = true
+public_readable = true
 
 # registry settings pyship is using has been flagging a false positve on Windows defender so don't use run_on_startup for now
 run_on_startup = false
