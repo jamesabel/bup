@@ -88,6 +88,7 @@ class BupDialog(QDialog):
             msg_box.setText("A backup is currently running.")
             msg_box.setInformativeText("Do you want to stop the backup and exit, or cancel and keep running?")
             msg_box.setIcon(QMessageBox.Warning)
+            stop_button = msg_box.addButton("Stop and Exit", QMessageBox.DestructiveRole)
             cancel_button = msg_box.addButton("Cancel", QMessageBox.RejectRole)
             msg_box.setDefaultButton(cancel_button)
             msg_box.exec_()
