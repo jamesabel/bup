@@ -40,7 +40,6 @@ def _remove_readonly_onerror(func, path, excinfo):
 
 def rmdir(p: Path):
     retry_count = 10
-    delete_ok = False
     while p.exists() and retry_count > 0:
         try:
             _p = make_long_path_compatible(p)
