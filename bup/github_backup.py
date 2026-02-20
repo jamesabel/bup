@@ -119,6 +119,11 @@ class GithubBackup(BupBase):
                         # new branch with no files yet - skip it and continue with other branches
                         self.info_out(f"git pull {repo_name} branch:{branch_name} - no files")
                         continue
+                    elif "would be overwritten by checkout" in str(e).lower():
+                        # typically caused by CRLF line-ending normalization on Windows, not actual user edits
+                        self.warning_out(f"{repo_name} branch:{branch_name} : checkout blocked by apparent local changes (likely line-ending normalization) : {e}")
+                        success = False
+                        break
                     else:
                         self.error_out(f"{repo_name} : {e}")
                         success = False
@@ -128,6 +133,7 @@ class GithubBackup(BupBase):
             if len(branches) > 1 and main_branch is not None:
                 main_branch_name = main_branch.name
                 self.info_out(f'git switch "{repo_name}" branch:"{main_branch_name}"')
+                git_repo.git.reset("--hard")  # clear any phantom changes (e.g. CRLF normalization) before switching
                 git_repo.git.switch(main_branch_name)
 
         return success
