@@ -74,7 +74,18 @@ def test_start_with_backup_dir(patched_run_backup_widget):
     with patch.object(widget.run_all, "start") as mock_start:
         widget.start()
         mock_start.assert_called_once()
+    # most_recent_backup is set on completion (in RunAll.run()), not on start
+    assert widget.most_recent_backup is None
+
+
+def test_run_all_sets_most_recent_backup(patched_run_backup_widget):
+    widget, _, mock_engines = patched_run_backup_widget
+    assert widget.most_recent_backup is None
+    widget.run_all.run()
     assert widget.most_recent_backup is not None
+    for bt in BackupTypes:
+        mock_engines[bt].start.assert_called_once()
+        mock_engines[bt].wait.assert_called_once()
 
 
 def test_stop(patched_run_backup_widget):

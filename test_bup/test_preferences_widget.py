@@ -105,6 +105,27 @@ def test_aws_secret_show_hide(mock_get, qapp):
 
 
 @patch("bup.gui.preferences_widget.get_gui_preferences")
+def test_dry_run_loaded_true(mock_get, qapp):
+    mock_get.return_value = _make_mock_prefs(dry_run=True)
+    w = PreferencesWidget()
+    assert w.dry_run_check_box.isChecked()
+
+
+@patch("bup.gui.preferences_widget.get_gui_preferences")
+def test_dry_run_loaded_false(mock_get, qapp):
+    mock_get.return_value = _make_mock_prefs(dry_run=False)
+    w = PreferencesWidget()
+    assert not w.dry_run_check_box.isChecked()
+
+
+@patch("bup.gui.preferences_widget.get_gui_preferences")
+def test_backup_period_minimum_is_1(mock_get, qapp):
+    mock_get.return_value = _make_mock_prefs()
+    w = PreferencesWidget()
+    assert w.automatic_backup_period.minimum() == 1
+
+
+@patch("bup.gui.preferences_widget.get_gui_preferences")
 def test_github_show_hide(mock_get, qapp):
     mock_get.return_value = _make_mock_prefs()
     w = PreferencesWidget()

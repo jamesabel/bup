@@ -18,10 +18,7 @@ class BupAbout(QWidget):
         gpl_license_file_name = "gpl-3.0.md"
 
         license_file_parent_dir = Path(__file__).parent.parent
-        license_path = None
-        for license_path in license_file_parent_dir.rglob(license_file_name):
-            if license_path.is_file():
-                break
+        license_path = next((p for p in license_file_parent_dir.rglob(license_file_name) if p.is_file()), None)
         if license_path is not None:
             gpl_license_path = Path(license_path.parent, gpl_license_file_name)
             gpl_text = gpl_license_path.read_text() if gpl_license_path.exists() and gpl_license_path.is_file() else f'GPL license file not found at "{gpl_license_path.absolute()}"'

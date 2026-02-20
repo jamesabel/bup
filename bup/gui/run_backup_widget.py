@@ -148,7 +148,6 @@ class RunBackupWidget(QWidget):
         self.restore_state()
 
     def start(self):
-        self.most_recent_backup = int(round(datetime.now().timestamp()))
         preferences = get_gui_preferences()
         if preferences.backup_directory is None:
             log.error("backup directory not set")

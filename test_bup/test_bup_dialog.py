@@ -1,3 +1,4 @@
+from datetime import datetime
 from unittest.mock import patch, MagicMock, PropertyMock
 
 import pytest
@@ -127,3 +128,57 @@ def test_close_event_stop_and_exit_when_running(mock_bup_dialog):
     dialog.run_backup_widget.stop.assert_called_once()
     dialog.run_backup_widget.wait_for_threads.assert_called_once_with(5000)
     dialog.run_backup_widget.save_state.assert_called_once()
+
+
+def _enable_autobackup(dialog, period_hours=1):
+    """Helper: enable automatic backup with a given period."""
+    dialog.preferences_widget.automatic_backup_enable_check_box.setChecked(True)
+    dialog.preferences_widget.automatic_backup_period.setValue(period_hours)
+    dialog.run_backup_widget.start = MagicMock()
+
+
+def test_autobackup_tick_first_run_starts_when_not_running(mock_bup_dialog):
+    dialog, _ = mock_bup_dialog
+    _enable_autobackup(dialog)
+    dialog.run_backup_widget.most_recent_backup = None
+    dialog.run_backup_widget.run_all.isRunning.return_value = False
+    dialog.autobackup_tick()
+    dialog.run_backup_widget.start.assert_called_once()
+
+
+def test_autobackup_tick_first_run_no_start_when_already_running(mock_bup_dialog):
+    dialog, _ = mock_bup_dialog
+    _enable_autobackup(dialog)
+    dialog.run_backup_widget.most_recent_backup = None
+    dialog.run_backup_widget.run_all.isRunning.return_value = True
+    dialog.autobackup_tick()
+    dialog.run_backup_widget.start.assert_not_called()
+
+
+def test_autobackup_tick_timer_expired_starts_when_not_running(mock_bup_dialog):
+    dialog, _ = mock_bup_dialog
+    _enable_autobackup(dialog, period_hours=1)
+    # last backup was 2 hours ago — timer expired
+    dialog.run_backup_widget.most_recent_backup = int(datetime.now().timestamp()) - 7200
+    dialog.run_backup_widget.run_all.isRunning.return_value = False
+    dialog.autobackup_tick()
+    dialog.run_backup_widget.start.assert_called_once()
+
+
+def test_autobackup_tick_timer_expired_no_start_when_already_running(mock_bup_dialog):
+    dialog, _ = mock_bup_dialog
+    _enable_autobackup(dialog, period_hours=1)
+    dialog.run_backup_widget.most_recent_backup = int(datetime.now().timestamp()) - 7200
+    dialog.run_backup_widget.run_all.isRunning.return_value = True
+    dialog.autobackup_tick()
+    dialog.run_backup_widget.start.assert_not_called()
+
+
+def test_autobackup_tick_timer_not_expired_no_start(mock_bup_dialog):
+    dialog, _ = mock_bup_dialog
+    _enable_autobackup(dialog, period_hours=24)
+    # last backup was only 1 hour ago — not expired
+    dialog.run_backup_widget.most_recent_backup = int(datetime.now().timestamp()) - 3600
+    dialog.run_backup_widget.run_all.isRunning.return_value = False
+    dialog.autobackup_tick()
+    dialog.run_backup_widget.start.assert_not_called()

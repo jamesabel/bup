@@ -21,7 +21,12 @@ class DynamoDBBackup(BupBase):
         dry_run = preferences.dry_run
         exclusions = ExclusionPreferences(self.backup_type.name).get_no_comments()
 
-        dynamodb_access = DynamoDBAccess(profile_name=preferences.aws_profile)
+        dynamodb_access = DynamoDBAccess(
+            profile_name=preferences.aws_profile or None,
+            aws_access_key_id=preferences.aws_access_key_id or None,
+            aws_secret_access_key=preferences.aws_secret_access_key or None,
+            region_name=preferences.aws_region or None,
+        )
         try:
             tables = dynamodb_access.get_table_names()
         except ClientError as e:
@@ -42,14 +47,21 @@ class DynamoDBBackup(BupBase):
                 self.info_out(f"dry run {table_name}")
             else:
                 self.info_out(f"{table_name}")
-                table = DynamoDBAccess(table_name, profile_name=preferences.aws_profile, cache_life=cache_life)
+                table = DynamoDBAccess(
+                    table_name,
+                    profile_name=preferences.aws_profile or None,
+                    aws_access_key_id=preferences.aws_access_key_id or None,
+                    aws_secret_access_key=preferences.aws_secret_access_key or None,
+                    region_name=preferences.aws_region or None,
+                    cache_life=cache_life,
+                )
                 table_contents = table.scan_table_cached()
 
                 dir_path = Path(backup_directory, "dynamodb")
                 dir_path.mkdir(parents=True, exist_ok=True)
                 with Path(dir_path, f"{table_name}.pickle").open("wb") as f:
                     pickle.dump(table_contents, f)
-                with Path(dir_path, f"{table_name}.json").open("w") as f:
+                with Path(dir_path, f"{table_name}.json").open("w", encoding="utf-8") as f:
                     f.write(dynamodb_to_json(table_contents, indent=4))
                 count += 1
 

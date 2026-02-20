@@ -20,5 +20,5 @@ def get_icon_path(file_extension: str) -> Path:
     log.debug(f"{bup_file=}")
     icon_file_path = Path(bup_file.parent, icon_file_name)
     if not icon_file_path.exists():
-        log.exception(f"icon not found : {icon_file_path=}")
+        log.error(f"icon not found : {icon_file_path=}")
     return icon_file_path

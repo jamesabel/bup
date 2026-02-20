@@ -3,8 +3,6 @@ import sys
 import os
 import re
 from pathlib import Path
-from multiprocessing import freeze_support
-from copy import deepcopy
 
 from awsimple import S3Access
 from balsa import get_logger
@@ -12,8 +10,6 @@ from balsa import get_logger
 from bup import __application_name__, BupBase, BackupTypes, get_preferences, ExclusionPreferences
 
 log = get_logger(__application_name__)
-
-freeze_support()
 
 
 # sundry candidate
@@ -40,7 +36,12 @@ class S3Backup(BupBase):
 
         os.makedirs(backup_directory, exist_ok=True)
 
-        s3_access = S3Access(profile_name=preferences.aws_profile)
+        s3_access = S3Access(
+            profile_name=preferences.aws_profile or None,
+            aws_access_key_id=preferences.aws_access_key_id or None,
+            aws_secret_access_key=preferences.aws_secret_access_key or None,
+            region_name=preferences.aws_region or None,
+        )
 
         decoding = "utf-8"
 
@@ -83,14 +84,12 @@ class S3Backup(BupBase):
 
                 if aws_cli_path is None:
                     log.error(f"AWS CLI executable not found ({aws_candidates=})")
-                elif python_path is None:
-                    log.error(f"Python executable not found ({aws_candidates=})")
                 else:
                     aws_cli_path = f'"{str(aws_cli_path)}"'  # from Path to str, with quotes for installed app
                     # AWS CLI app also needs the python executable to be in the path if it's not in the same dir, which happens when this program is installed.
                     # Make the directory of our python.exe the first in the list so it's found and not any of the others that may or may not be in the PATH.
-                    env_var = deepcopy(os.environ)
-                    env_var["path"] = f"{str(python_path.parent)};{env_var.get('path', '')}"
+                    env_var = os.environ.copy()
+                    env_var["PATH"] = f"{str(python_path.parent)};{env_var.get('PATH', '')}"
 
                     destination = Path(backup_directory, bucket_name)
                     os.makedirs(destination, exist_ok=True)
@@ -111,9 +110,15 @@ class S3Backup(BupBase):
                     for line in sync_result.stdout.decode(decoding).splitlines():
                         log.info(line.strip())
                     for line in sync_result.stderr.decode(decoding).splitlines():
-                        self.warning_out(line.strip())
+                        line = line.strip()
+                        if line:
+                            self.warning_out(line)
+                    if sync_result.returncode != 0:
+                        self.error_out(f"aws s3 sync failed (exit code {sync_result.returncode}) for {bucket_name}")
 
-                    # check the results
+                    # check the results (skip during dry run - nothing was synced)
+                    if dry_run:
+                        continue
                     ls_command_line = [aws_cli_path, "s3", "ls", "--summarize", "--recursive", s3_bucket_path]
                     ls_command_line_str = " ".join(ls_command_line)
                     log.info(ls_command_line_str)

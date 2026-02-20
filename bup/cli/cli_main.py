@@ -21,6 +21,7 @@ def cli_main(args):
         preferences.backup_directory = args.path  # backup classes will read the preferences DB directly
         preferences.github_token = args.token
         preferences.aws_profile = args.profile
+        preferences.dry_run = args.dry_run
 
         # If setting the exclusions, just do it for one backup type at a time.  The values are stored for subsequent runs.
         if args.exclude is not None and len(args.exclude) > 0:

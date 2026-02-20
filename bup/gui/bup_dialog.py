@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import ctypes
+import os
 
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTabWidget, QMessageBox
 from PyQt5.QtGui import QCloseEvent, QIcon
@@ -16,8 +17,9 @@ class BupDialog(QDialog):
         self.setWindowIcon(QIcon(str(get_icon_path("png"))))
 
         # set task bar icon (Windows only)
-        bup_app_id = f'{__author__}.{__application_name__}.{__version__}'  # arbitrary string
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(bup_app_id)
+        if os.name == "nt":
+            bup_app_id = f'{__author__}.{__application_name__}.{__version__}'  # arbitrary string
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(bup_app_id)
 
         self.setWindowTitle(f"{__application_name__} ({__version__})")
         self.setWindowFlag(Qt.WindowMinimizeButtonHint, True)
@@ -60,14 +62,15 @@ class BupDialog(QDialog):
                 backup_period_time_delta = timedelta(hours=backup_period)
                 if self.run_backup_widget.most_recent_backup is None:
                     # first time run
-                    self.run_backup_widget.start()
+                    if not self.run_backup_widget.run_all.isRunning():
+                        self.run_backup_widget.start()
                 else:
                     most_recent_backup = datetime.fromtimestamp(self.run_backup_widget.most_recent_backup)
                     next_backup_date_time = most_recent_backup + backup_period_time_delta
                     next_backup_time_delta = next_backup_date_time - now
                     next_backup_time_delta_second_granularity = timedelta(days=next_backup_time_delta.days, seconds=next_backup_time_delta.seconds)  # don't display fractions of a second
                     self.run_backup_widget.countdown_text.setText(f"{next_backup_date_time.strftime('%m-%d-%Y %H:%M:%S')} (in {str(next_backup_time_delta_second_granularity)})")
-                    if next_backup_time_delta.total_seconds() <= 0.0:
+                    if next_backup_time_delta.total_seconds() <= 0.0 and not self.run_backup_widget.run_all.isRunning():
                         # timer is up - start the backup
                         self.run_backup_widget.start()
 
