@@ -48,7 +48,7 @@ class GithubBackup(BupBase):
             if any([e == repo_name for e in exclusions]):
                 self.info_out(f"{repo_owner_and_name} excluded")
             elif dry_run:
-                self.info_out(f'dry run {repo_owner_and_name}')
+                self.info_out(f"dry run {repo_owner_and_name}")
             else:
                 repo_dir = Path(backup_dir, repo_owner_and_name).absolute()
                 branches = list(github_repo.branches())

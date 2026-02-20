@@ -56,14 +56,17 @@ def _make_fake_about_widget(parent=None):
 def mock_bup_dialog(qapp):
     mock_prefs = _make_mock_prefs()
 
-    with patch("bup.gui.bup_dialog.ctypes") as mock_ctypes, \
-         patch("bup.gui.bup_dialog.get_icon_path", return_value=MagicMock(__str__=lambda self: "")), \
-         patch("bup.gui.bup_dialog.get_preferences", return_value=mock_prefs), \
-         patch("bup.gui.bup_dialog.RunBackupWidget", side_effect=_make_fake_run_backup_widget), \
-         patch("bup.gui.bup_dialog.PreferencesWidget", side_effect=_make_fake_preferences_widget), \
-         patch("bup.gui.bup_dialog.BupAbout", side_effect=_make_fake_about_widget):
+    with (
+        patch("bup.gui.bup_dialog.ctypes") as mock_ctypes,
+        patch("bup.gui.bup_dialog.get_icon_path", return_value=MagicMock(__str__=lambda self: "")),
+        patch("bup.gui.bup_dialog.get_preferences", return_value=mock_prefs),
+        patch("bup.gui.bup_dialog.RunBackupWidget", side_effect=_make_fake_run_backup_widget),
+        patch("bup.gui.bup_dialog.PreferencesWidget", side_effect=_make_fake_preferences_widget),
+        patch("bup.gui.bup_dialog.BupAbout", side_effect=_make_fake_about_widget),
+    ):
         mock_ctypes.windll = MagicMock()
         from bup.gui.bup_dialog import BupDialog
+
         dialog = BupDialog()
         yield dialog, mock_prefs
 

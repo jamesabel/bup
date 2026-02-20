@@ -1,3 +1,4 @@
+import logging
 import pickle
 from datetime import timedelta
 from pathlib import Path
@@ -5,6 +6,11 @@ from pathlib import Path
 from botocore.exceptions import ClientError
 from awsimple import DynamoDBAccess, dynamodb_to_json
 from balsa import get_logger
+
+# boto3/botocore log responses at DEBUG level; the repr() of large responses can contain
+# characters that cp1252 (Windows console default) cannot encode, causing noisy logging errors.
+logging.getLogger("boto3").setLevel(logging.WARNING)
+logging.getLogger("botocore").setLevel(logging.WARNING)
 
 from bup import BupBase, BackupTypes, get_preferences, ExclusionPreferences, __application_name__
 
