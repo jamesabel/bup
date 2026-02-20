@@ -1,3 +1,4 @@
+import logging
 import subprocess
 import sys
 import os
@@ -6,6 +7,9 @@ from pathlib import Path
 
 from awsimple import S3Access
 from balsa import get_logger
+
+logging.getLogger("boto3").setLevel(logging.WARNING)
+logging.getLogger("botocore").setLevel(logging.WARNING)
 
 from bup import __application_name__, BupBase, BackupTypes, get_preferences, ExclusionPreferences
 
