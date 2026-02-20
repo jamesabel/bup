@@ -40,14 +40,18 @@ def patched_run_backup_widget(qapp):
     def mock_backup_class_factory(backup_type):
         def factory(ui_type, info_cb, warn_cb, err_cb):
             return mock_engines[backup_type]
+
         return factory
 
     mock_classes = {bt: mock_backup_class_factory(bt) for bt in BackupTypes}
 
-    with patch("bup.gui.run_backup_widget.get_gui_preferences", return_value=mock_prefs), \
-         patch("bup.gui.run_backup_widget.backup_classes", mock_classes), \
-         patch("bup.gui.run_backup_widget.ExclusionPreferences"):
+    with (
+        patch("bup.gui.run_backup_widget.get_gui_preferences", return_value=mock_prefs),
+        patch("bup.gui.run_backup_widget.backup_classes", mock_classes),
+        patch("bup.gui.run_backup_widget.ExclusionPreferences"),
+    ):
         from bup.gui.run_backup_widget import RunBackupWidget
+
         widget = RunBackupWidget()
         yield widget, mock_prefs, mock_engines
 

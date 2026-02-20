@@ -1,0 +1,2 @@
+[1mbup\gui\bup_dialog.py[m[36m:[m91[36m:[m13[36m:[m [1m[31mF841[m local variable 'stop_and_exit_button' is assigned to but never used
+[1mbup\robust_os_calls.py[m[36m:[m48[36m:[m13[36m:[m [1m[31mF841[m local variable 'delete_ok' is assigned to but never used

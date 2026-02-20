@@ -18,7 +18,7 @@ class BupDialog(QDialog):
 
         # set task bar icon (Windows only)
         if os.name == "nt":
-            bup_app_id = f'{__author__}.{__application_name__}.{__version__}'  # arbitrary string
+            bup_app_id = f"{__author__}.{__application_name__}.{__version__}"  # arbitrary string
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(bup_app_id)
 
         self.setWindowTitle(f"{__application_name__} ({__version__})")
@@ -75,7 +75,7 @@ class BupDialog(QDialog):
                         self.run_backup_widget.start()
 
             if self.run_backup_widget.run_all.isRunning():
-                ticks = '.' * (self.tick_count % 4)
+                ticks = "." * (self.tick_count % 4)
                 self.run_backup_widget.countdown_text.setText(f"running {ticks}")
         else:
             self.run_backup_widget.countdown_text.setText("(automatic backup not enabled)")
@@ -88,7 +88,6 @@ class BupDialog(QDialog):
             msg_box.setText("A backup is currently running.")
             msg_box.setInformativeText("Do you want to stop the backup and exit, or cancel and keep running?")
             msg_box.setIcon(QMessageBox.Warning)
-            stop_and_exit_button = msg_box.addButton("Stop and Exit", QMessageBox.DestructiveRole)
             cancel_button = msg_box.addButton("Cancel", QMessageBox.RejectRole)
             msg_box.setDefaultButton(cancel_button)
             msg_box.exec_()

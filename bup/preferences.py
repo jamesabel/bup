@@ -5,7 +5,6 @@ from typing import List
 
 from bup import __application_name__, __author__, UITypes
 
-
 log = get_logger(__application_name__)
 
 
