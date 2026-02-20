@@ -1,4 +1,3 @@
-from typing import Iterable
 from pathlib import Path
 import time
 
@@ -73,7 +72,10 @@ class GithubBackup(BupBase):
                             self.error_out(f'could not remove "{repo_dir}" - may require manual removal')
                         else:
                             self.info_out(f'git clone "{repo_owner_and_name}"')
-                            Repo.clone_from(github_repo.clone_url, repo_dir)
+                            clone_url = github_repo.clone_url
+                            if preferences.github_token:
+                                clone_url = clone_url.replace("https://", f"https://{preferences.github_token}@")
+                            Repo.clone_from(clone_url, repo_dir)
                             time.sleep(1.0)
                             self.pull_branches(repo_owner_and_name, branches, repo_dir)
                             clone_count += 1
@@ -85,7 +87,7 @@ class GithubBackup(BupBase):
         self.info_out(f"{len(repositories)} repos, {pull_count} pulls, {clone_count} clones, {len(exclusions)} excluded")
 
     @typechecked()
-    def pull_branches(self, repo_name: str, branches: Iterable, repo_dir: Path) -> bool:
+    def pull_branches(self, repo_name: str, branches: list, repo_dir: Path) -> bool:
 
         try:
             git_repo = Repo(repo_dir)
@@ -114,15 +116,16 @@ class GithubBackup(BupBase):
                     success = True
                 except GitCommandError as e:
                     if "did not match any file".lower() in str(e).lower():
-                        # new branch - this is normal - we'll do a full clone if this happens
+                        # new branch with no files yet - skip it and continue with other branches
                         self.info_out(f"git pull {repo_name} branch:{branch_name} - no files")
+                        continue
                     else:
                         self.error_out(f"{repo_name} : {e}")
-                    success = False
-                    break
+                        success = False
+                        break
 
             # if more than one branch, switch to main (or master) branch upon exit
-            if len(list(branches)) > 1 and main_branch is not None:
+            if len(branches) > 1 and main_branch is not None:
                 main_branch_name = main_branch.name
                 self.info_out(f'git switch "{repo_name}" branch:"{main_branch_name}"')
                 git_repo.git.switch(main_branch_name)

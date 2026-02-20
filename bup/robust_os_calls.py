@@ -58,7 +58,7 @@ def rmdir(p: Path):
         retry_count -= 1
     if p.exists():
         log.error('could not remove "%s"' % p)
-    return delete_ok and retry_count > 0
+    return not p.exists()
 
 
 def mkdirs(d: Path, remove_first=False):

@@ -104,6 +104,7 @@ class PreferencesWidget(QWidget):
         self.automatic_backup_widget = QWidget()
         self.automatic_backup_widget.setLayout(QHBoxLayout())
         self.automatic_backup_period = QSpinBox()
+        self.automatic_backup_period.setMinimum(1)
         self.automatic_backup_period.textChanged.connect(self.automatic_backup_changed)
         self.automatic_backup_widget.layout().addWidget(QLabel("Backup every (hours):"))
         self.automatic_backup_widget.layout().addWidget(self.automatic_backup_period)
@@ -137,6 +138,7 @@ class PreferencesWidget(QWidget):
         self.aws_secret_access_key_line_edit.setText(preferences.aws_secret_access_key)
         self.aws_region_line_edit.setText(preferences.aws_region)
         self.github_token_line_edit.setText(preferences.github_token)
+        self.dry_run_check_box.setChecked(bool(preferences.dry_run))  # None translates to False
         self.verbose_check_box.setChecked(bool(preferences.verbose))  # None translates to False
         self.automatic_backup_enable_check_box.setChecked(bool(preferences.automatic_backup))
         if preferences.backup_period is not None:
