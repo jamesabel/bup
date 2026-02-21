@@ -1,4 +1,5 @@
 import logging
+import shutil
 import subprocess
 import sys
 import os
@@ -74,9 +75,16 @@ class S3Backup(BupBase):
                 # Use sys.executable to reliably locate python and aws CLI in the same directory,
                 # which works for both local venv and installed app scenarios.
                 python_exe = Path(sys.executable)
+                aws_names = ["aws.cmd", "aws.exe", "aws"] if sys.platform == "win32" else ["aws"]
                 aws_candidates = [
-                    (python_exe, python_exe.parent / "aws"),  # same dir as python (venv or installed app)
-                    (Path("venv", "Scripts", "python.exe").absolute(), Path("venv", "Scripts", "aws").absolute()),  # local venv from CWD
+                    (python_exe, python_exe.parent / name)  # same dir as python (venv Scripts/)
+                    for name in aws_names
+                ] + [
+                    (python_exe, python_exe.parent / "Scripts" / name)  # CLIP layout: python at root, scripts in Scripts/
+                    for name in aws_names
+                ] + [
+                    (Path("venv", "Scripts", "python.exe").absolute(), Path("venv", "Scripts", name).absolute())  # local venv from CWD
+                    for name in aws_names
                 ]
                 aws_cli_path = None
                 python_path = None
@@ -85,6 +93,13 @@ class S3Backup(BupBase):
                         aws_cli_path = a
                         python_path = p
                         break
+
+                # fall back to whatever is on the system PATH
+                if aws_cli_path is None:
+                    aws_in_path = shutil.which("aws")
+                    if aws_in_path:
+                        aws_cli_path = Path(aws_in_path)
+                        python_path = python_exe
 
                 if aws_cli_path is None:
                     log.error(f"AWS CLI executable not found ({aws_candidates=})")
