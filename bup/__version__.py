@@ -1,4 +1,4 @@
-__version__ = "0.11.6"
+__version__ = "0.11.7"
 __application_name__ = "bup"
 __title__ = __application_name__
 __author__ = "abel"
