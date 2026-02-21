@@ -41,7 +41,7 @@ def test_overwritten_error_is_warning_not_error(github_backup, tmp_path):
     mock_repo = MagicMock()
     mock_repo.git.checkout.side_effect = _overwritten_error()
 
-    with patch("bup.github_backup.Repo", return_value=mock_repo):
+    with patch("git.Repo", return_value=mock_repo):
         result = github_backup.pull_branches("owner/repo", [_branch("main")], repo_dir)
 
     assert result is False
@@ -58,7 +58,7 @@ def test_no_files_error_continues_to_next_branch(github_backup, tmp_path):
     # first branch fails with no-files, second succeeds
     mock_repo.git.checkout.side_effect = [_no_files_error("empty-branch"), None]
 
-    with patch("bup.github_backup.Repo", return_value=mock_repo):
+    with patch("git.Repo", return_value=mock_repo):
         result = github_backup.pull_branches("owner/repo", [_branch("empty-branch"), _branch("main")], repo_dir)
 
     assert result is True
@@ -71,7 +71,7 @@ def test_reset_hard_called_before_switch(github_backup, tmp_path):
     repo_dir.mkdir()
     mock_repo = MagicMock()
 
-    with patch("bup.github_backup.Repo", return_value=mock_repo):
+    with patch("git.Repo", return_value=mock_repo):
         github_backup.pull_branches("owner/repo", [_branch("feature"), _branch("main")], repo_dir)
 
     git_calls = mock_repo.git.mock_calls
@@ -90,7 +90,7 @@ def test_other_git_errors_use_error_out(github_backup, tmp_path):
     mock_repo = MagicMock()
     mock_repo.git.checkout.side_effect = GitCommandError(["git", "checkout"], 128, stderr=b"fatal: not a git repository")
 
-    with patch("bup.github_backup.Repo", return_value=mock_repo):
+    with patch("git.Repo", return_value=mock_repo):
         result = github_backup.pull_branches("owner/repo", [_branch("main")], repo_dir)
 
     assert result is False
@@ -103,7 +103,7 @@ def test_single_branch_no_switch(github_backup, tmp_path):
     repo_dir.mkdir()
     mock_repo = MagicMock()
 
-    with patch("bup.github_backup.Repo", return_value=mock_repo):
+    with patch("git.Repo", return_value=mock_repo):
         github_backup.pull_branches("owner/repo", [_branch("main")], repo_dir)
 
     git_calls = mock_repo.git.mock_calls
