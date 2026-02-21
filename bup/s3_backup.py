@@ -127,11 +127,11 @@ class S3Backup(BupBase):
                         return
 
                     for line in sync_result.stdout.decode(decoding).splitlines():
-                        log.info(line.strip())
+                        log.info(f"{bucket_name}:{line.strip()}")
                     for line in sync_result.stderr.decode(decoding).splitlines():
                         line = line.strip()
                         if line:
-                            self.warning_out(line)
+                            self.warning_out(f"{bucket_name}:{line}")
                     if sync_result.returncode != 0:
                         self.error_out(f"aws s3 sync failed (exit code {sync_result.returncode}) for {bucket_name}")
 
