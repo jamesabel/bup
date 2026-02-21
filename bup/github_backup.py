@@ -1,9 +1,8 @@
 from pathlib import Path
+import shutil
 import time
 
 import github3
-from git import Repo
-from git.exc import GitCommandError, InvalidGitRepositoryError
 from github3.exceptions import AuthenticationFailed
 from balsa import get_logger
 from typeguard import typechecked
@@ -18,6 +17,12 @@ class GithubBackup(BupBase):
     backup_type = BackupTypes.github
 
     def run(self):
+        if shutil.which("git") is None:
+            self.error_out("git executable not found in PATH - GitHub backup cannot run")
+            return
+
+        from git import Repo
+        from git.exc import GitCommandError
 
         preferences = get_preferences(self.ui_type)
         dry_run = preferences.dry_run
@@ -88,6 +93,8 @@ class GithubBackup(BupBase):
 
     @typechecked()
     def pull_branches(self, repo_name: str, branches: list, repo_dir: Path) -> bool:
+        from git import Repo
+        from git.exc import GitCommandError, InvalidGitRepositoryError
 
         try:
             git_repo = Repo(repo_dir)
