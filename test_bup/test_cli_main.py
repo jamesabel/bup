@@ -63,7 +63,7 @@ def test_s3_backup_started_with_s3_flag(mock_get_prefs, mock_balsa, mock_gh, moc
     cli_main(_make_args(s3=True))
 
     mock_engine.start.assert_called_once()
-    mock_engine.join.assert_called_once()
+    mock_engine.wait.assert_called_once()  # QThread uses wait(), not join()
 
 
 @patch("bup.cli.cli_main.S3Backup")

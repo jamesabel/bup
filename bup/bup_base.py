@@ -38,7 +38,11 @@ class BupBase(QThread):
 
     def info_out(self, s: str):
         # callees could call emit(), but that seems awkward so provide this method
-        self.info_out_signal.emit(s)
+        if self.ui_type == UITypes.cli:
+            # the CLI has no Qt event loop, so queued signals would never be delivered - call directly
+            self._info_out(s)
+        else:
+            self.info_out_signal.emit(s)
 
     def _info_out(self, s: str):
         # hooked up to the signal for threading
@@ -47,7 +51,10 @@ class BupBase(QThread):
 
     def warning_out(self, s: str):
         # callees could call emit(), but that seems awkward so provide this method
-        self.warning_out_signal.emit(s)
+        if self.ui_type == UITypes.cli:
+            self._warning_out(s)
+        else:
+            self.warning_out_signal.emit(s)
 
     def _warning_out(self, s: str):
         # hooked up to the signal for threading
@@ -56,7 +63,10 @@ class BupBase(QThread):
 
     def error_out(self, s: str):
         # callees could call emit(), but that seems awkward so provide this method
-        self.error_out_signal.emit(s)
+        if self.ui_type == UITypes.cli:
+            self._error_out(s)
+        else:
+            self.error_out_signal.emit(s)
 
     def _error_out(self, s: str):
         # hooked up to the signal for threading
