@@ -51,18 +51,16 @@ class BupDialog(QDialog):
 
     def autobackup_tick(self):
         if self.preferences_widget.automatic_backup_enable_check_box.isChecked():
-            try:
-                backup_period = int(self.preferences_widget.automatic_backup_period.text())
-            except ValueError:
-                backup_period = None
-            if backup_period is None:
+            backup_period = self.preferences_widget.automatic_backup_period.value()  # QSpinBox guarantees an int
+            if backup_period <= 0:
                 self.run_backup_widget.countdown_text.setText("(automatic backup not set)")
             else:
                 now = datetime.now()
                 backup_period_time_delta = timedelta(hours=backup_period)
                 if self.run_backup_widget.most_recent_backup is None:
-                    # first time run
+                    # no backup on record - start one right away
                     if not self.run_backup_widget.run_all.isRunning():
+                        self.run_backup_widget.countdown_text.setText("(starting first automatic backup)")
                         self.run_backup_widget.start()
                 else:
                     most_recent_backup = datetime.fromtimestamp(self.run_backup_widget.most_recent_backup)
@@ -88,7 +86,7 @@ class BupDialog(QDialog):
             msg_box.setText("A backup is currently running.")
             msg_box.setInformativeText("Do you want to stop the backup and exit, or cancel and keep running?")
             msg_box.setIcon(QMessageBox.Warning)
-            stop_button = msg_box.addButton("Stop and Exit", QMessageBox.DestructiveRole)
+            msg_box.addButton("Stop and Exit", QMessageBox.DestructiveRole)
             cancel_button = msg_box.addButton("Cancel", QMessageBox.RejectRole)
             msg_box.setDefaultButton(cancel_button)
             msg_box.exec_()

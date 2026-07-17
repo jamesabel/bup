@@ -2,7 +2,8 @@ from enum import Enum
 from datetime import datetime
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QGroupBox, QHBoxLayout, QTextEdit, QSplitter, QLabel
-from PyQt5.QtCore import Qt, QThread
+from PyQt5.QtCore import Qt, QThread, QTimer
+from PyQt5.QtGui import QTextCursor
 from balsa import get_logger
 
 from bup import BackupTypes, S3Backup, DynamoDBBackup, GithubBackup, ExclusionPreferences, UITypes, __application_name__
@@ -25,7 +26,9 @@ class RunAll(QThread):
             self.widget.backup_engines[backup_type].start()
         for backup_type in self.widget.backup_engines:
             self.widget.backup_engines[backup_type].wait()
-        self.widget.most_recent_backup = int(round(datetime.now().timestamp()))
+        if not any(self.widget.backup_engines[backup_type].stop_requested for backup_type in self.widget.backup_engines):
+            # a stopped run isn't a completed backup - don't reset the auto-backup countdown
+            self.widget.most_recent_backup = int(round(datetime.now().timestamp()))
 
 
 def get_local_time_string() -> str:
@@ -53,10 +56,23 @@ class DisplayBox(QGroupBox):
         self.text = []
 
     def append_text(self, s):
-        self.text.append(f"{get_local_time_string()} {s}")
+        # insert at the top (most recent activity first) with cursor operations so each append is O(1),
+        # instead of re-rendering the whole buffer for every line
+        line = f"{get_local_time_string()} {s}"
+        self.text.append(line)
+        cursor = self.text_box.textCursor()
+        cursor.movePosition(QTextCursor.Start)
+        if len(self.text) == 1:
+            cursor.insertText(line)
+        else:
+            cursor.insertText(f"{line}\n")
         if len(self.text) > max_text_lines:
             self.text.pop(0)  # FIFO
-        self.text_box.setText("\n".join(reversed(self.text)))  # most recent activity at the top
+            # the oldest line is the last block - remove it and its preceding newline
+            cursor.movePosition(QTextCursor.End)
+            cursor.movePosition(QTextCursor.StartOfBlock, QTextCursor.KeepAnchor)
+            cursor.removeSelectedText()
+            cursor.deletePreviousChar()
 
     def clear_text(self):
         self.text = []
@@ -73,6 +89,12 @@ class BackupWidget(QGroupBox):
         super().__init__(backup_type.name)
         self.setLayout(QVBoxLayout())
 
+        # debounce exclusion writes so we don't hit the DB on every keystroke
+        self.exclusions_save_timer = QTimer(self)
+        self.exclusions_save_timer.setSingleShot(True)
+        self.exclusions_save_timer.setInterval(500)  # ms
+        self.exclusions_save_timer.timeout.connect(self.exclusions)
+
         self.display_boxes = {}
         self.splitter = QSplitter(Qt.Vertical)
         self.layout().addWidget(self.splitter)
@@ -83,9 +105,15 @@ class BackupWidget(QGroupBox):
                 # read exclusions into the DB
                 exclusions = ExclusionPreferences(self.backup_type.name)
                 self.display_boxes[display_type].text_box.setText("\n".join(exclusions.get()))
-                self.display_boxes[display_type].text_box.textChanged.connect(self.exclusions)
+                self.display_boxes[display_type].text_box.textChanged.connect(self.exclusions_save_timer.start)
             else:
                 self.display_boxes[display_type].text_box.setReadOnly(True)
+
+    def flush_exclusions(self):
+        # write out any pending (debounced) exclusion edits immediately
+        if self.exclusions_save_timer.isActive():
+            self.exclusions_save_timer.stop()
+            self.exclusions()
 
     def exclusions(self):
         """
@@ -170,6 +198,8 @@ class RunBackupWidget(QWidget):
 
     def save_state(self):
         preferences = get_gui_preferences()
+        for backup_type in BackupTypes:
+            self.backup_status[backup_type].flush_exclusions()
         for backup_type in BackupTypes:
             for display_type in DisplayTypes:
                 setattr(preferences, self.get_layout_key(backup_type, display_type, "height"), self.backup_status[backup_type].display_boxes[display_type].height())

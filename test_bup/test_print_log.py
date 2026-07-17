@@ -14,7 +14,7 @@ def test_print_log():
     for value in range(start, 0, -1):
         if value < start - 1:
             time.sleep(1)
-        print_log(f"{value-1}" * int(round(50.0 * random.random())))
+        print_log(f"{value - 1}" * int(round(50.0 * random.random())))
 
 
 if is_main():
