@@ -28,6 +28,7 @@ def _make_mock_engine():
     engine.start = MagicMock()
     engine.wait = MagicMock()
     engine.terminate = MagicMock()
+    engine.stop_requested = False  # a MagicMock attribute would be truthy, which reads as "stopped"
     return engine
 
 

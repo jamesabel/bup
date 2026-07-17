@@ -192,5 +192,4 @@ class PreferencesWidget(QWidget):
     def automatic_backup_changed(self):
         preferences = get_gui_preferences()
         preferences.automatic_backup = self.automatic_backup_enable_check_box.isChecked()
-        if len(backup_period := self.automatic_backup_period.text().strip()) > 0:
-            preferences.backup_period = int(round(float(backup_period)))
+        preferences.backup_period = self.automatic_backup_period.value()  # QSpinBox guarantees an int

@@ -19,7 +19,11 @@ def make_long_path_compatible(path: Path) -> str:
     """
     path_str = str(path.resolve())
     if os.name.lower() == "nt" and not path_str.startswith("\\\\?\\"):
-        path_str = "\\\\?\\" + path_str
+        if path_str.startswith("\\\\"):
+            # UNC paths use the \\?\UNC\server\share form
+            path_str = "\\\\?\\UNC" + path_str[1:]
+        else:
+            path_str = "\\\\?\\" + path_str
     return path_str
 
 
@@ -28,7 +32,7 @@ def remove_readonly(path: Path):
 
 
 # sometimes needed for Windows
-def _remove_readonly_onerror(func, path, excinfo):
+def _remove_readonly_onexc(func, path, exc):
     _path = Path(path)
     if _path.is_file():
         remove_readonly(_path)
@@ -43,7 +47,7 @@ def rmdir(p: Path):
     while p.exists() and retry_count > 0:
         try:
             _p = make_long_path_compatible(p)
-            shutil.rmtree(_p, onerror=_remove_readonly_onerror)
+            shutil.rmtree(_p, onexc=_remove_readonly_onexc)
         except FileNotFoundError as e:
             log.debug(str(e))  # this can happen when first doing the shutil.rmtree()
             time.sleep(1)
@@ -63,7 +67,7 @@ def mkdirs(d: Path, remove_first=False):
     if remove_first:
         rmdir(d)
     # sometimes when Path.mkdir() exits the dir is not actually there
-    count = 600
+    count = 50  # up to ~5 seconds
     while count > 0 and not d.exists():
         try:
             # for some reason we can get the FileNotFoundError exception

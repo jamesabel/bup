@@ -11,7 +11,7 @@ def arguments():
 
     version_string = "version"
 
-    if len(sys.argv) > 1 and sys.argv[1].lower() == f"--{version_string}":
+    if f"--{version_string}" in [a.lower() for a in sys.argv[1:]]:
         print(__version__)
         sys.exit()
 
@@ -41,7 +41,7 @@ def arguments():
         parser.add_argument(f"--{version_string}", action="store_true", default=False, help="display version and exit")
         parser.add_argument("-v", f"--{verbose_arg_string}", dest=verbose_arg_string, action="store_true", default=False, help="set verbose")
         parser.add_argument("-l", f"--{log_dir_arg_string}", dest=log_dir_arg_string, help="log dir")
-        parser.add_argument(f"--{delete_existing_arg_string}", dest=delete_existing_arg_string, help="delete existing logs")
+        parser.add_argument(f"--{delete_existing_arg_string}", dest=delete_existing_arg_string, action="store_true", default=False, help="delete existing logs")
         args = parser.parse_args()
 
         if args.logdir is None and args.path is not None:
