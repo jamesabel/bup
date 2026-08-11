@@ -3,11 +3,11 @@ import shutil
 import subprocess
 import sys
 import os
-import re
 from pathlib import Path
 from typing import Optional, Tuple
 
 from awsimple import S3Access
+from botocore.exceptions import BotoCoreError, ClientError
 from balsa import get_logger
 
 logging.getLogger("boto3").setLevel(logging.WARNING)
@@ -17,16 +17,53 @@ from bup import __application_name__, BupBase, BackupTypes, get_preferences, Exc
 
 log = get_logger(__application_name__)
 
+decoding = "utf-8"
+
 
 # sundry candidate
-def get_dir_size(dir_path: Path):
+def get_dir_size(dir_path: Path) -> Tuple[int, int]:
     dir_size = 0
     file_count = 0
-    for root, _, file_names in os.walk(dir_path):
+    for root, _unused_dir_names, file_names in os.walk(dir_path):
         for file_name in file_names:
-            file_count += 1
-            dir_size += os.path.getsize(os.path.join(root, file_name))
+            file_path = os.path.join(root, file_name)
+            try:
+                dir_size += os.path.getsize(file_path)
+                file_count += 1
+            except OSError as e:
+                # e.g. file removed mid-walk, or path too long for the OS API - don't let one file kill the backup
+                log.warning(f'could not get size of "{file_path}" : {e}')
     return dir_size, file_count
+
+
+def get_bucket_size(s3_client, bucket_name: str) -> Tuple[int, int]:
+    """
+    Total size (bytes) and object count of an S3 bucket, via the boto3 client.
+    :return: (total_size, object_count)
+    """
+    total_size = 0
+    object_count = 0
+    paginator = s3_client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket_name):
+        for s3_object in page.get("Contents", []):
+            total_size += s3_object["Size"]
+            object_count += 1
+    return total_size, object_count
+
+
+def compare_backup_sizes(s3_total_size: int, local_size: int) -> Tuple[str, str]:
+    """
+    Rough check that the sync worked, based on total sizes.
+    :return: (level, message) where level is "error" or "info"
+    """
+    if s3_total_size > local_size:
+        # we're missing files
+        return "error", "not all files backed up"
+    elif s3_total_size < local_size:
+        # expected over time - sync intentionally doesn't use --delete, so files deleted from S3 are retained locally
+        return "info", "local backup is larger than S3 (files deleted from S3 are retained locally)"
+    else:
+        return "info", "match"
 
 
 def find_aws_cli() -> Tuple[Optional[Path], Optional[Path]]:
@@ -60,6 +97,23 @@ class S3Backup(BupBase):
 
     backup_type = BackupTypes.S3
 
+    def run_stoppable_subprocess(self, command_line: list, env_var: dict) -> Tuple[int, str, str]:
+        """
+        Run a subprocess, polling for a stop request. On stop, terminate the subprocess so it isn't orphaned.
+        :return: (returncode, stdout, stderr)
+        """
+        process = subprocess.Popen(command_line, env=env_var, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        while True:
+            try:
+                stdout, stderr = process.communicate(timeout=1.0)
+                break
+            except subprocess.TimeoutExpired:
+                if self.stop_requested:
+                    process.terminate()
+                    stdout, stderr = process.communicate()
+                    break
+        return process.returncode, stdout.decode(decoding, errors="replace"), stderr.decode(decoding, errors="replace")
+
     def run(self):
 
         preferences = get_preferences(self.ui_type)
@@ -76,11 +130,6 @@ class S3Backup(BupBase):
             region_name=preferences.aws_region or None,
         )
 
-        decoding = "utf-8"
-
-        # we delete all whitespace below
-        ls_re = re.compile(r"TotalObjects:([0-9]+)TotalSize:([0-9]+)")
-
         aws_cli_path, python_path = find_aws_cli()
         if aws_cli_path is None:
             self.error_out("AWS CLI executable not found - S3 backup cannot run")
@@ -91,7 +140,11 @@ class S3Backup(BupBase):
         env_var = os.environ.copy()
         env_var["PATH"] = f"{str(python_path.parent)}{os.pathsep}{env_var.get('PATH', '')}"
 
-        buckets = s3_access.bucket_list()
+        try:
+            buckets = s3_access.bucket_list()
+        except (ClientError, BotoCoreError) as e:
+            self.error_out(f"could not list S3 buckets - check credentials and connectivity : {e}")
+            return
         self.info_out(f"found {len(buckets)} buckets")
 
         count = 0
@@ -121,59 +174,40 @@ class S3Backup(BupBase):
             log.info(subprocess.list2cmdline(sync_command_line))
 
             try:
-                sync_result = subprocess.run(sync_command_line, env=env_var, capture_output=True)
+                sync_returncode, sync_stdout, sync_stderr = self.run_stoppable_subprocess(sync_command_line, env_var)
             except (FileNotFoundError, OSError) as e:
                 self.error_out(f'error executing {" ".join(sync_command_line)} {e}')
                 return
 
-            for line in sync_result.stdout.decode(decoding).splitlines():
+            if self.stop_requested:
+                break
+
+            for line in sync_stdout.splitlines():
                 log.info(f"{bucket_name}:{line.strip()}")
-            for line in sync_result.stderr.decode(decoding).splitlines():
+            for line in sync_stderr.splitlines():
                 line = line.strip()
                 if line:
                     self.warning_out(f"{bucket_name}:{line}")
-            if sync_result.returncode != 0:
-                self.error_out(f"aws s3 sync failed (exit code {sync_result.returncode}) for {bucket_name}")
+            if sync_returncode != 0:
+                self.error_out(f"aws s3 sync failed (exit code {sync_returncode}) for {bucket_name}")
                 continue  # don't count or verify a failed sync
 
             # check the results (skip during dry run - nothing was synced)
             if dry_run:
                 dry_run_count += 1
                 continue
-            ls_command_line = [str(aws_cli_path), "s3", "ls", "--summarize", "--recursive", s3_bucket_path]
-            ls_command_line_str = subprocess.list2cmdline(ls_command_line)
-            log.info(ls_command_line_str)
-            ls_result = subprocess.run(ls_command_line, env=env_var, capture_output=True)
-            for line in ls_result.stderr.decode(decoding).splitlines():
-                line = line.strip()
-                if line:
-                    self.warning_out(f"{bucket_name}:{line}")
-            ls_stdout = "".join([c for c in ls_result.stdout.decode(decoding) if c not in " \r\n"])  # remove all whitespace
-            if len(ls_stdout) == 0:
-                self.error_out(f'"{ls_command_line_str}" failed ({ls_stdout=}) - check internet connection')
-            else:
-                ls_parsed = ls_re.search(ls_stdout)
-                if ls_parsed is None:
-                    self.error_out(f"parse error:\n{ls_command_line_str=}\n{ls_stdout=}")
-                else:
-                    count += 1
-                    s3_object_count = int(ls_parsed.group(1))
-                    s3_total_size = int(ls_parsed.group(2))
-                    local_size, local_count = get_dir_size(destination)
 
-                    # rough check that the sync worked
-                    if s3_total_size > local_size:
-                        # we're missing files
-                        message = "not all files backed up"
-                        output_routine = self.error_out
-                    elif s3_total_size != local_size:
-                        # Compare size, not number of files, since aws s3 sync does not copy files of zero size.
-                        message = "mismatch"
-                        output_routine = self.warning_out
-                    else:
-                        message = "match"
-                        output_routine = log.info
-                    output_routine(f"{bucket_name} : {message} (s3_count={s3_object_count}, local_count={local_count}; s3_total_size={s3_total_size}, local_size={local_size})")
+            try:
+                s3_total_size, s3_object_count = get_bucket_size(s3_access.client, bucket_name)
+            except (ClientError, BotoCoreError) as e:
+                self.error_out(f"could not list contents of {bucket_name} to verify the sync : {e}")
+                continue
+
+            count += 1
+            local_size, local_count = get_dir_size(destination)
+            level, message = compare_backup_sizes(s3_total_size, local_size)
+            output_routines = {"error": self.error_out, "info": log.info}
+            output_routines[level](f"{bucket_name} : {message} (s3_count={s3_object_count}, local_count={local_count}; s3_total_size={s3_total_size}, local_size={local_size})")
 
         if dry_run:
             self.info_out(f"{len(buckets)} buckets, {dry_run_count} dry run, {len(exclusions_no_comments)} excluded")

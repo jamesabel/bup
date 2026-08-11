@@ -61,21 +61,3 @@ def rmdir(p: Path):
     if p.exists():
         log.error('could not remove "%s"' % p)
     return not p.exists()
-
-
-def mkdirs(d: Path, remove_first=False):
-    if remove_first:
-        rmdir(d)
-    # sometimes when Path.mkdir() exits the dir is not actually there
-    count = 50  # up to ~5 seconds
-    while count > 0 and not d.exists():
-        try:
-            # for some reason we can get the FileNotFoundError exception
-            d.mkdir(parents=True, exist_ok=True)
-        except FileNotFoundError:
-            pass
-        if not d.exists():
-            time.sleep(0.1)
-        count -= 1
-    if not d.exists():
-        log.error(f'could not mkdirs "{d}" ({d.absolute()})')

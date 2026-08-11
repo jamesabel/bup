@@ -33,8 +33,10 @@ class GithubBackup(BupBase):
 
     backup_type = BackupTypes.github
 
-    _github_token: Optional[str] = None
-    _git_env: dict = {}
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._github_token: Optional[str] = None
+        self._git_env: dict = {}
 
     def redact(self, s: str) -> str:
         # keep the token out of the GUI, logs, and Sentry
@@ -62,12 +64,12 @@ class GithubBackup(BupBase):
         try:
             gh = github3.login(token=preferences.github_token)
             if gh is None:
-                log.warning("could not login to github")
+                self.warning_out("could not login to github - check that a github token is set in preferences")
                 repositories = []
             else:
                 repositories = list(gh.repositories())  # this actually throws the authentication error
         except AuthenticationFailed:
-            log.error("github authentication failed")
+            self.error_out("github authentication failed - check the github token in preferences")
             return
 
         clone_count = 0
