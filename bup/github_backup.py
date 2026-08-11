@@ -99,7 +99,7 @@ class GithubBackup(BupBase):
                     except GitCommandError as e:
                         self.warning_out(self.redact(f'could not pull "{repo_dir}" - will try to start over and do a clone of "{repo_owner_and_name},{e}","{__file__}"'))
 
-                # new to us - clone the repo
+                # new to us (or the pull failed, e.g. a force-pushed branch with a rewritten history) - clone the repo
                 if not pull_success:
                     try:
                         if repo_dir.exists():
@@ -114,9 +114,10 @@ class GithubBackup(BupBase):
                             self.pull_branches(repo_owner_and_name, branches, repo_dir, clone_url=clone_url)
                             clone_count += 1
                     except PermissionError as e:
-                        self.warning_out(self.redact(f'{repo_owner_and_name},"{repo_dir}",{e},"{__file__}"'))
+                        # the clone is the last resort - if it fails, this repo was not backed up
+                        self.error_out(self.redact(f'{repo_owner_and_name},"{repo_dir}",{e},"{__file__}"'))
                     except GitCommandError as e:
-                        self.warning_out(self.redact(f'{repo_owner_and_name},"{repo_dir}",{e},"{__file__}"'))
+                        self.error_out(self.redact(f'{repo_owner_and_name},"{repo_dir}",{e},"{__file__}"'))
 
         self.info_out(f"{len(repositories)} repos, {pull_count} pulls, {clone_count} clones, {len(exclusions)} excluded")
 
@@ -128,7 +129,8 @@ class GithubBackup(BupBase):
         try:
             git_repo = Repo(repo_dir)
         except InvalidGitRepositoryError as e:
-            self.error_out(f'InvalidGitRepositoryError: {repo_name},"{repo_dir}",{e},"{__file__}"')
+            # recoverable - the caller falls back to removing the local copy and doing a fresh clone
+            self.warning_out(f'InvalidGitRepositoryError: {repo_name},"{repo_dir}",{e},"{__file__}"')
             git_repo = None
 
         success = False
@@ -170,7 +172,9 @@ class GithubBackup(BupBase):
                         success = False
                         break
                     else:
-                        self.error_out(self.redact(f"{repo_name} : {e}"))
+                        # recoverable (e.g. a force-pushed branch whose rewritten history can't be merged) -
+                        # the caller falls back to a fresh clone, and escalates to an error if that also fails
+                        self.warning_out(self.redact(f"{repo_name} : {e}"))
                         success = False
                         break
 
