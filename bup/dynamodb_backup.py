@@ -3,7 +3,7 @@ import pickle
 from datetime import timedelta
 from pathlib import Path
 
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 from awsimple import DynamoDBAccess, dynamodb_to_json
 from balsa import get_logger
 
@@ -35,9 +35,10 @@ class DynamoDBBackup(BupBase):
         )
         try:
             tables = dynamodb_access.get_table_names()
-        except ClientError as e:
-            log.warning(e)
-            tables = []
+        except (ClientError, BotoCoreError) as e:
+            # BotoCoreError covers e.g. NoCredentialsError and EndpointConnectionError
+            self.error_out(f"could not list DynamoDB tables - check credentials and connectivity : {e}")
+            return
         self.info_out(f"found {len(tables)} DynamoDB tables")
         count = 0
         for table_name in tables:
@@ -61,14 +62,23 @@ class DynamoDBBackup(BupBase):
                     region_name=preferences.aws_region or None,
                     cache_life=cache_life,
                 )
-                table_contents = table.scan_table_cached()
+                try:
+                    table_contents = table.scan_table_cached()
+                except (ClientError, BotoCoreError) as e:
+                    # don't let one failed table kill the backup of the remaining tables
+                    self.error_out(f"could not scan {table_name} : {e}")
+                    continue
 
                 dir_path = Path(backup_directory, "dynamodb")
                 dir_path.mkdir(parents=True, exist_ok=True)
-                with Path(dir_path, f"{table_name}.pickle").open("wb") as f:
-                    pickle.dump(table_contents, f)
-                with Path(dir_path, f"{table_name}.json").open("w", encoding="utf-8") as f:
-                    f.write(dynamodb_to_json(table_contents, indent=4))
+                try:
+                    with Path(dir_path, f"{table_name}.pickle").open("wb") as f:
+                        pickle.dump(table_contents, f)
+                    with Path(dir_path, f"{table_name}.json").open("w", encoding="utf-8") as f:
+                        f.write(dynamodb_to_json(table_contents, indent=4))
+                except OSError as e:
+                    self.error_out(f"could not write backup files for {table_name} : {e}")
+                    continue
                 count += 1
 
         self.info_out(f"{len(tables)} tables, {count} backed up, {len(exclusions)} excluded")

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QLabel, QFileDialog, QLineEdit, QCheckBox, QSpinBox
 
 from bup import get_preferences, UITypes
@@ -8,7 +10,7 @@ def get_gui_preferences():
 
 
 class PreferencesLineEdit(QLineEdit):
-    def setText(self, s: (str, None)):
+    def setText(self, s: Optional[str]):
         # tolerate None
         if s is not None:
             super().setText(s)

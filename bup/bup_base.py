@@ -21,6 +21,7 @@ class BupBase(QThread):
     def __init__(self, ui_type: UITypes, info_out: Callable, warning_out: Callable, error_out: Callable):
         super().__init__()
         self._stop_requested = False
+        self.error_count = 0
         self.ui_type = ui_type
         self.caller_info_out = info_out
         self.caller_warning_out = warning_out
@@ -28,6 +29,12 @@ class BupBase(QThread):
         self.info_out_signal.connect(self._info_out)
         self.warning_out_signal.connect(self._warning_out)
         self.error_out_signal.connect(self._error_out)
+
+    def start(self, *args, **kwargs):
+        # a prior run may have been stopped or had errors - a new start is a fresh run
+        self._stop_requested = False
+        self.error_count = 0
+        super().start(*args, **kwargs)
 
     def request_stop(self):
         self._stop_requested = True
@@ -70,5 +77,6 @@ class BupBase(QThread):
 
     def _error_out(self, s: str):
         # hooked up to the signal for threading
+        self.error_count += 1
         log.error(s)
         self.caller_error_out(s)

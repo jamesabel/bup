@@ -60,8 +60,10 @@ class BupDialog(QDialog):
                 if self.run_backup_widget.most_recent_backup is None:
                     # no backup on record - start one right away
                     if not self.run_backup_widget.run_all.isRunning():
-                        self.run_backup_widget.countdown_text.setText("(starting first automatic backup)")
-                        self.run_backup_widget.start()
+                        if self.run_backup_widget.start():
+                            self.run_backup_widget.countdown_text.setText("(starting first automatic backup)")
+                        else:
+                            self.run_backup_widget.countdown_text.setText("(backup directory not set)")
                 else:
                     most_recent_backup = datetime.fromtimestamp(self.run_backup_widget.most_recent_backup)
                     next_backup_date_time = most_recent_backup + backup_period_time_delta
@@ -70,7 +72,8 @@ class BupDialog(QDialog):
                     self.run_backup_widget.countdown_text.setText(f"{next_backup_date_time.strftime('%m-%d-%Y %H:%M:%S')} (in {str(next_backup_time_delta_second_granularity)})")
                     if next_backup_time_delta.total_seconds() <= 0.0 and not self.run_backup_widget.run_all.isRunning():
                         # timer is up - start the backup
-                        self.run_backup_widget.start()
+                        if not self.run_backup_widget.start():
+                            self.run_backup_widget.countdown_text.setText("(backup directory not set)")
 
             if self.run_backup_widget.run_all.isRunning():
                 ticks = "." * (self.tick_count % 4)

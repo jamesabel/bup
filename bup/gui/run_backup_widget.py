@@ -159,6 +159,7 @@ class RunBackupWidget(QWidget):
         self.backup_status = {}
         self.backup_engines = {}
         self.run_all = RunAll(self)
+        self._backup_directory_error_logged = False
 
         for backup_type in BackupTypes:
             self.backup_status[backup_type] = BackupWidget(backup_type)
@@ -175,12 +176,17 @@ class RunBackupWidget(QWidget):
 
         self.restore_state()
 
-    def start(self):
+    def start(self) -> bool:
         preferences = get_gui_preferences()
         if preferences.backup_directory is None:
-            log.error("backup directory not set")
-        else:
-            self.run_all.start()
+            # the auto-backup timer may retry every second - only log the first failure, not one per tick
+            if not self._backup_directory_error_logged:
+                log.error("backup directory not set")
+                self._backup_directory_error_logged = True
+            return False
+        self._backup_directory_error_logged = False
+        self.run_all.start()
+        return True
 
     def stop(self):
         for backup_type in self.backup_engines:
