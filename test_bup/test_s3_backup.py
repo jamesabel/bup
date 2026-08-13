@@ -6,7 +6,7 @@ import pytest
 from botocore.exceptions import ClientError, NoCredentialsError
 
 from bup import UITypes
-from bup.s3_backup import S3Backup, compare_backup_sizes, get_bucket_size, get_dir_size
+from bup.s3_backup import S3Backup, compare_backup_sizes, count_synced_files, get_bucket_size, get_dir_size
 
 fake_aws_cli = (Path("aws"), Path("python"))
 
@@ -50,6 +50,20 @@ def _make_preferences(tmp_path: Path, dry_run: bool = False) -> MagicMock:
     preferences.aws_secret_access_key = None
     preferences.aws_region = None
     return preferences
+
+
+def test_count_synced_files():
+    sync_stdout = "download: s3://b/k1.txt to dir\\k1.txt\nCompleted 2 of 3 file(s)\ndownload: s3://b/k2.txt to dir\\k2.txt\ncopy: s3://b/k3.txt to s3://b/k3-copy.txt\n"
+    assert count_synced_files(sync_stdout) == 3
+
+
+def test_count_synced_files_dry_run():
+    assert count_synced_files("(dryrun) download: s3://b/k.txt to dir\\k.txt\n") == 1
+
+
+def test_count_synced_files_nothing_to_do():
+    # files already up to date produce no output
+    assert count_synced_files("") == 0
 
 
 def test_compare_backup_sizes_missing_files_is_error():
@@ -195,6 +209,44 @@ def test_outdated_aws_cli_surfaces_warning(mock_get_prefs, mock_s3_access, mock_
         backup.run()
 
     assert any("not the latest" in w for w in warnings)
+
+
+@patch("bup.s3_backup.get_bucket_size")
+@patch("bup.s3_backup.find_aws_cli", return_value=fake_aws_cli)
+@patch("bup.s3_backup.ExclusionPreferences")
+@patch("bup.s3_backup.S3Access")
+@patch("bup.s3_backup.get_preferences")
+def test_synced_file_count_in_summary(mock_get_prefs, mock_s3_access, mock_exclusions, mock_find_aws_cli, mock_get_bucket_size, tmp_path):
+    mock_get_prefs.return_value = _make_preferences(tmp_path)
+    mock_s3_access.return_value.bucket_list.return_value = ["my-bucket"]
+    mock_exclusions.return_value.get_no_comments.return_value = []
+    mock_get_bucket_size.return_value = (0, 0)
+    infos = []
+    backup = _make_backup(info=infos.append)
+
+    sync_stdout = "download: s3://my-bucket/a.txt to dir\\a.txt\ndownload: s3://my-bucket/b.txt to dir\\b.txt\n"
+    with patch.object(S3Backup, "run_stoppable_subprocess", return_value=(0, sync_stdout, "")):
+        backup.run()
+
+    assert any("2 files synced" in i for i in infos)
+
+
+@patch("bup.s3_backup.find_aws_cli", return_value=fake_aws_cli)
+@patch("bup.s3_backup.ExclusionPreferences")
+@patch("bup.s3_backup.S3Access")
+@patch("bup.s3_backup.get_preferences")
+def test_synced_file_count_in_dry_run_summary(mock_get_prefs, mock_s3_access, mock_exclusions, mock_find_aws_cli, tmp_path):
+    mock_get_prefs.return_value = _make_preferences(tmp_path, dry_run=True)
+    mock_s3_access.return_value.bucket_list.return_value = ["my-bucket"]
+    mock_exclusions.return_value.get_no_comments.return_value = []
+    infos = []
+    backup = _make_backup(info=infos.append)
+
+    sync_stdout = "(dryrun) download: s3://my-bucket/a.txt to dir\\a.txt\n"
+    with patch.object(S3Backup, "run_stoppable_subprocess", return_value=(0, sync_stdout, "")):
+        backup.run()
+
+    assert any("1 files would be synced" in i for i in infos)
 
 
 @patch("bup.s3_backup.get_bucket_size")

@@ -1,12 +1,12 @@
 import logging
-from enum import Enum
 
 from PyQt5.QtCore import QObject, pyqtSignal, Qt
 from PyQt5.QtGui import QFontDatabase
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPlainTextEdit, QPushButton, QGroupBox, QSplitter
 from balsa import get_logger
 
-from bup import __application_name__, BackupTypes
+from bup import __application_name__
+from bup.log_routing import LogSources, get_log_source, log_line_format
 from bup.gui import get_gui_preferences
 
 log = get_logger(__application_name__)
@@ -14,39 +14,6 @@ log = get_logger(__application_name__)
 max_log_lines = 10000
 
 minimum_pane_height = 50  # pixels
-
-log_line_format = "%(asctime)s %(levelname)s %(filename)s:%(lineno)d %(threadName)s %(message)s"
-
-
-class LogSources(Enum):
-    s3 = "AWS S3"
-    dynamodb = "DynamoDB"
-    github = "GitHub"
-    application = "Application"
-
-
-# records stamped with a backup type by BupBase (the info_out/warning_out/error_out path, whose records all originate in bup_base.py)
-log_sources_by_backup_type = {
-    BackupTypes.S3: LogSources.s3,
-    BackupTypes.DynamoDB: LogSources.dynamodb,
-    BackupTypes.github: LogSources.github,
-}
-
-# records logged directly (not via BupBase) are routed by the source file they were logged from
-# (all of bup logs to the same application logger)
-log_sources_by_filename = {
-    "s3_backup.py": LogSources.s3,
-    "aws_cli.py": LogSources.s3,
-    "dynamodb_backup.py": LogSources.dynamodb,
-    "github_backup.py": LogSources.github,
-}
-
-
-def get_log_source(record: logging.LogRecord) -> LogSources:
-    backup_type = getattr(record, "backup_type", None)
-    if backup_type in log_sources_by_backup_type:
-        return log_sources_by_backup_type[backup_type]
-    return log_sources_by_filename.get(record.filename, LogSources.application)
 
 
 class QtLogEmitter(QObject):

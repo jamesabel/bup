@@ -50,6 +50,21 @@ def get_bucket_size(s3_client, bucket_name: str) -> Tuple[int, int]:
     return total_size, object_count
 
 
+def count_synced_files(sync_stdout: str) -> int:
+    """
+    Number of files "aws s3 sync" transferred (or would transfer, for a dry run), from its stdout -
+    the CLI emits one "download:" (or "copy:") line per file, and nothing for files already up to date.
+    """
+    synced_count = 0
+    for line in sync_stdout.splitlines():
+        line = line.strip()
+        if line.startswith("(dryrun) "):
+            line = line[len("(dryrun) ") :]
+        if line.startswith(("download:", "copy:")):
+            synced_count += 1
+    return synced_count
+
+
 def compare_backup_sizes(s3_total_size: int, local_size: int) -> Tuple[str, str]:
     """
     Rough check that the sync worked, based on total sizes.
@@ -122,6 +137,7 @@ class S3Backup(BupBase):
 
         count = 0
         dry_run_count = 0
+        total_synced_count = 0
         exclusions_no_comments = ExclusionPreferences(BackupTypes.S3.name).get_no_comments()
         for bucket_name in buckets:
             if self.stop_requested:
@@ -165,9 +181,13 @@ class S3Backup(BupBase):
                 self.error_out(f"aws s3 sync failed (exit code {sync_returncode}) for {bucket_name}")
                 continue  # don't count or verify a failed sync
 
+            synced_count = count_synced_files(sync_stdout)
+            total_synced_count += synced_count
+
             # check the results (skip during dry run - nothing was synced)
             if dry_run:
                 dry_run_count += 1
+                self.info_out(f"{bucket_name} : {synced_count} files would be synced")
                 continue
 
             try:
@@ -180,9 +200,11 @@ class S3Backup(BupBase):
             local_size, local_count = get_dir_size(destination)
             level, message = compare_backup_sizes(s3_total_size, local_size)
             output_routines = {"error": self.error_out, "info": log.info}
-            output_routines[level](f"{bucket_name} : {message} (s3_count={s3_object_count}, local_count={local_count}; s3_total_size={s3_total_size}, local_size={local_size})")
+            output_routines[level](
+                f"{bucket_name} : {message} (synced={synced_count}, s3_count={s3_object_count}, local_count={local_count}; s3_total_size={s3_total_size}, local_size={local_size})"
+            )
 
         if dry_run:
-            self.info_out(f"{len(buckets)} buckets, {dry_run_count} dry run, {len(exclusions_no_comments)} excluded")
+            self.info_out(f"{len(buckets)} buckets, {dry_run_count} dry run, {total_synced_count} files would be synced, {len(exclusions_no_comments)} excluded")
         else:
-            self.info_out(f"{len(buckets)} buckets, {count} backed up, {len(exclusions_no_comments)} excluded")
+            self.info_out(f"{len(buckets)} buckets, {count} backed up, {total_synced_count} files synced, {len(exclusions_no_comments)} excluded")

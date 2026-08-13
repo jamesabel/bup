@@ -1,8 +1,10 @@
 from typing import Optional
 
+from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QLabel, QFileDialog, QLineEdit, QCheckBox, QSpinBox
 
 from bup import get_preferences, UITypes
+from bup.log_routing import set_detailed_file_logging
 
 
 def get_gui_preferences():
@@ -118,6 +120,26 @@ class PreferencesWidget(QWidget):
         self.layout().addWidget(QLabel())  # space
         self.layout().addWidget(QLabel())  # space
 
+        # detailed log directory (optional - one log file per backup type, with e.g. the full AWS CLI calls and their output)
+        # debounce applying the directory so a half-typed path doesn't start collecting log files
+        self.detailed_log_apply_timer = QTimer(self)
+        self.detailed_log_apply_timer.setSingleShot(True)
+        self.detailed_log_apply_timer.setInterval(1000)  # ms
+        self.detailed_log_apply_timer.timeout.connect(self.apply_detailed_log_directory)
+        self.detailed_log_widget = QWidget()
+        self.detailed_log_widget.setLayout(QHBoxLayout())
+        self.detailed_log_directory_line_edit = PreferencesLineEdit()
+        self.detailed_log_directory_line_edit.textChanged.connect(self.detailed_log_directory_changed)
+        self.select_detailed_log_directory_button = QPushButton("Select Detailed Log Directory")
+        self.select_detailed_log_directory_button.clicked.connect(self.select_detailed_log_directory)
+        self.detailed_log_widget.layout().addWidget(QLabel("Detailed Log Directory (blank for none):"))
+        self.detailed_log_widget.layout().addWidget(self.detailed_log_directory_line_edit)
+        self.detailed_log_widget.layout().addWidget(self.select_detailed_log_directory_button)
+        self.detailed_log_widget.layout().addStretch()
+        self.layout().addWidget(self.detailed_log_widget)
+        self.layout().addWidget(QLabel())  # space
+        self.layout().addWidget(QLabel())  # space
+
         # dry run
         self.dry_run_check_box = QCheckBox("Dry run")
         self.dry_run_check_box.clicked.connect(self.dry_run_clicked)
@@ -140,6 +162,7 @@ class PreferencesWidget(QWidget):
         self.aws_secret_access_key_line_edit.setText(preferences.aws_secret_access_key)
         self.aws_region_line_edit.setText(preferences.aws_region)
         self.github_token_line_edit.setText(preferences.github_token)
+        self.detailed_log_directory_line_edit.setText(preferences.detailed_log_directory)
         self.dry_run_check_box.setChecked(bool(preferences.dry_run))  # None translates to False
         self.verbose_check_box.setChecked(bool(preferences.verbose))  # None translates to False
         self.automatic_backup_enable_check_box.setChecked(bool(preferences.automatic_backup))
@@ -176,6 +199,18 @@ class PreferencesWidget(QWidget):
 
     def github_token_changed(self):
         get_gui_preferences().github_token = self.github_token_line_edit.text()
+
+    def select_detailed_log_directory(self):
+        new_detailed_log_directory = QFileDialog.getExistingDirectory(self, "Select Detailed Log Directory")
+        if new_detailed_log_directory is not None and len(new_detailed_log_directory) > 0:
+            self.detailed_log_directory_line_edit.setText(new_detailed_log_directory)
+
+    def detailed_log_directory_changed(self):
+        get_gui_preferences().detailed_log_directory = self.detailed_log_directory_line_edit.text()
+        self.detailed_log_apply_timer.start()
+
+    def apply_detailed_log_directory(self):
+        set_detailed_file_logging(self.detailed_log_directory_line_edit.text())
 
     def github_visible_clicked(self):
         if self.github_token_line_edit.echoMode() == PreferencesLineEdit.Password:

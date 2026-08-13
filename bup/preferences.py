@@ -27,6 +27,8 @@ class BupPreferences(Pref):
 
     verbose: bool = attrib(default=False)
 
+    detailed_log_directory: str = attrib(default=None)  # None/blank = detailed file logging off
+
     height: int = attrib(default=None)
     width: int = attrib(default=None)
     S3_exclusions_height: int = attrib(default=None)

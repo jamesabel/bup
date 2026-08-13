@@ -13,6 +13,7 @@ def _make_mock_prefs(**overrides):
         aws_secret_access_key="SECRET",
         aws_region="us-east-1",
         github_token="ghp_token",
+        detailed_log_directory=None,
         verbose=False,
         dry_run=False,
         automatic_backup=False,
@@ -116,6 +117,22 @@ def test_dry_run_loaded_false(mock_get, qapp):
     mock_get.return_value = _make_mock_prefs(dry_run=False)
     w = PreferencesWidget()
     assert not w.dry_run_check_box.isChecked()
+
+
+@patch("bup.gui.preferences_widget.set_detailed_file_logging")
+@patch("bup.gui.preferences_widget.get_gui_preferences")
+def test_detailed_log_directory_changed(mock_get, mock_set_detailed, qapp, tmp_path):
+    prefs = _make_mock_prefs()
+    mock_get.return_value = prefs
+    w = PreferencesWidget()
+    w.detailed_log_directory_line_edit.setText(str(tmp_path))
+    assert prefs.detailed_log_directory == str(tmp_path)
+    # applying the directory is debounced so a half-typed path doesn't start collecting log files
+    assert w.detailed_log_apply_timer.isActive()
+    mock_set_detailed.assert_not_called()
+    w.detailed_log_apply_timer.stop()
+    w.apply_detailed_log_directory()
+    mock_set_detailed.assert_called_once_with(str(tmp_path))
 
 
 @patch("bup.gui.preferences_widget.get_gui_preferences")

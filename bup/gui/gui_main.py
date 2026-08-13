@@ -7,6 +7,7 @@ from dotenv import load_dotenv, find_dotenv
 from tobool import to_bool_strict
 
 from bup import __application_name__, __author__
+from bup.log_routing import set_detailed_file_logging
 from bup.gui import BupDialog, get_gui_preferences
 
 load_dotenv(find_dotenv())
@@ -24,6 +25,8 @@ def gui_main():
             sentry_sdk.init(dsn=sentry_dsn, traces_sample_rate=1.0, profiles_sample_rate=1.0)
             balsa.sentry_dsn = sentry_dsn
     balsa.init_logger()
+
+    set_detailed_file_logging(get_gui_preferences().detailed_log_directory)
 
     app = QApplication([])
     bup_gui = BupDialog()

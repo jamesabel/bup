@@ -3,6 +3,7 @@ import sys
 from balsa import Balsa, get_logger
 
 from bup import __application_name__, __author__, __version__, S3Backup, DynamoDBBackup, GithubBackup, get_preferences, UITypes, ExclusionPreferences, BackupTypes
+from bup.log_routing import set_detailed_file_logging
 
 log = get_logger(__application_name__)
 
@@ -32,6 +33,7 @@ def cli_main(args):
 
     preferences = get_preferences(ui_type)
     preferences.backup_directory = args.path  # backup classes will read the preferences DB directly
+    set_detailed_file_logging(preferences.detailed_log_directory)  # one detailed log file per backup type, if configured
     # only overwrite saved values when explicitly given on the command line
     if args.token is not None:
         preferences.github_token = args.token
