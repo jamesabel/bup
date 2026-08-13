@@ -19,10 +19,7 @@ dependencies = [
     "balsa",
     "boto3",
     "typeguard",
-    "hashy",
-    "dictim",
     "awsimple",
-    "pressenter2exit",
     "awscli",
     "GitPython",
     "github3.py",
@@ -34,6 +31,20 @@ dependencies = [
     "pyqt5",
     "python-dotenv",
     "sentry-sdk",
+]
+
+[project.optional-dependencies]
+dev = [
+    "wheel",
+    "black",
+    "pytest",
+    "coverage",
+    "pytest-cov",
+    "pyship",
+    "flake8",
+    "PyQt5-stubs",
+    "build",
+    "twine",
 ]
 
 [project.urls]
@@ -51,9 +62,6 @@ include = ["bup*"]
 
 [tool.setuptools.package-data]
 bup = ["bup.png", "bup.ico", "LICENSE", "gpl-3.0.md"]
-
-[tool.hatch.version]
-path = "bup/__version__.py"
 
 [tool.pyship]
 is_gui = true
