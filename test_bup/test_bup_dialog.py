@@ -52,6 +52,12 @@ def _make_fake_about_widget(parent=None):
     return QWidget(parent)
 
 
+def _make_fake_log_widget(parent=None):
+    w = QWidget(parent)
+    w.detach = MagicMock()
+    return w
+
+
 @pytest.fixture
 def mock_bup_dialog(qapp):
     mock_prefs = _make_mock_prefs()
@@ -62,6 +68,7 @@ def mock_bup_dialog(qapp):
         patch("bup.gui.bup_dialog.get_preferences", return_value=mock_prefs),
         patch("bup.gui.bup_dialog.RunBackupWidget", side_effect=_make_fake_run_backup_widget),
         patch("bup.gui.bup_dialog.PreferencesWidget", side_effect=_make_fake_preferences_widget),
+        patch("bup.gui.bup_dialog.LogWidget", side_effect=_make_fake_log_widget),
         patch("bup.gui.bup_dialog.BupAbout", side_effect=_make_fake_about_widget),
     ):
         mock_ctypes.windll = MagicMock()
@@ -73,7 +80,7 @@ def mock_bup_dialog(qapp):
 
 def test_creation(mock_bup_dialog):
     dialog, _ = mock_bup_dialog
-    assert dialog.tab_widget.count() == 3
+    assert dialog.tab_widget.count() == 4
     assert dialog.autobackup_timer is not None
 
 
