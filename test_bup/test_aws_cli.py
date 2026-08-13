@@ -55,6 +55,7 @@ def test_check_aws_cli_version_up_to_date():
     level, message = check_aws_cli_version("1.42.35", "1.42.35")
     assert level == "info"
     assert "up to date" in message
+    assert "latest: 1.42.35" in message
 
 
 def test_check_aws_cli_version_newer_than_latest_is_info():

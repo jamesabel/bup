@@ -118,4 +118,4 @@ def check_aws_cli_version(installed_version: Optional[str], latest_version: Opti
         return "warning", f"could not compare AWS CLI versions (installed: {installed_version}, latest: {latest_version})"
     if installed < latest:
         return "warning", f'AWS CLI {installed_version} is not the latest ({latest_version}) - upgrade with "pip install --upgrade awscli"'
-    return "info", f"AWS CLI {installed_version} is up to date"
+    return "info", f"AWS CLI {installed_version} is up to date (latest: {latest_version})"
