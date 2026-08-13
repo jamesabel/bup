@@ -1,10 +1,8 @@
 import logging
-import shutil
 import subprocess
-import sys
 import os
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Tuple
 
 from awsimple import S3Access
 from botocore.exceptions import BotoCoreError, ClientError
@@ -14,6 +12,7 @@ logging.getLogger("boto3").setLevel(logging.WARNING)
 logging.getLogger("botocore").setLevel(logging.WARNING)
 
 from bup import __application_name__, BupBase, BackupTypes, get_preferences, ExclusionPreferences
+from bup.aws_cli import find_aws_cli, make_aws_cli_env, get_aws_cli_version, get_latest_awscli_version, check_aws_cli_version
 
 log = get_logger(__application_name__)
 
@@ -66,33 +65,6 @@ def compare_backup_sizes(s3_total_size: int, local_size: int) -> Tuple[str, str]
         return "info", "match"
 
 
-def find_aws_cli() -> Tuple[Optional[Path], Optional[Path]]:
-    """
-    Locate the AWS CLI executable and the python executable it should run with.
-    Use sys.executable to reliably locate python and aws CLI in the same directory,
-    which works for both local venv and installed app scenarios.
-    :return: (aws_cli_path, python_path), or (None, None) if not found
-    """
-    python_exe = Path(sys.executable)
-    aws_names = ["aws.cmd", "aws.exe", "aws"] if sys.platform == "win32" else ["aws"]
-    aws_candidates = (
-        [(python_exe, python_exe.parent / name) for name in aws_names]  # same dir as python (venv Scripts/)
-        + [(python_exe, python_exe.parent / "Scripts" / name) for name in aws_names]  # CLIP layout: python at root, scripts in Scripts/
-        + [(Path("venv", "Scripts", "python.exe").absolute(), Path("venv", "Scripts", name).absolute()) for name in aws_names]  # local venv from CWD
-    )
-    for p, a in aws_candidates:
-        if p.exists() and a.exists():
-            return a, p
-
-    # fall back to whatever is on the system PATH
-    aws_in_path = shutil.which("aws")
-    if aws_in_path:
-        return Path(aws_in_path), python_exe
-
-    log.error(f"AWS CLI executable not found ({aws_candidates=})")
-    return None, None
-
-
 class S3Backup(BupBase):
 
     backup_type = BackupTypes.S3
@@ -135,10 +107,11 @@ class S3Backup(BupBase):
             self.error_out("AWS CLI executable not found - S3 backup cannot run")
             return
 
-        # The AWS CLI app also needs the python executable to be in the path if it's not in the same dir, which happens when this program is installed.
-        # Make the directory of our python.exe the first in the list so it's found and not any of the others that may or may not be in the PATH.
-        env_var = os.environ.copy()
-        env_var["PATH"] = f"{str(python_path.parent)}{os.pathsep}{env_var.get('PATH', '')}"
+        env_var = make_aws_cli_env(python_path)
+
+        # check that the AWS CLI doing the backups is the latest available (warn but proceed - an outdated CLI can still back up)
+        aws_cli_version_level, aws_cli_version_message = check_aws_cli_version(get_aws_cli_version(aws_cli_path, env_var), get_latest_awscli_version())
+        {"warning": self.warning_out, "info": self.info_out}[aws_cli_version_level](aws_cli_version_message)
 
         try:
             buckets = s3_access.bucket_list()
