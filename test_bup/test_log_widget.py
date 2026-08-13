@@ -1,17 +1,25 @@
 import logging
 import threading
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 import pytest
 
 from bup import __application_name__
-from bup.gui.log_widget import LogWidget, LogSources
+from bup.gui.log_widget import LogWidget, LogSources, minimum_pane_height
 
 logger = logging.getLogger(__application_name__)
 
 
 @pytest.fixture
-def log_widget(qapp):
+def mock_gui_preferences():
+    preferences = MagicMock(**{f"log_pane_{log_source.name}_height": None for log_source in LogSources})
+    with patch("bup.gui.log_widget.get_gui_preferences", return_value=preferences):
+        yield preferences
+
+
+@pytest.fixture
+def log_widget(qapp, mock_gui_preferences):
     original_level = logger.level
     logger.setLevel(logging.INFO)  # balsa isn't initialized in tests, so set the level the GUI would normally have
     widget = LogWidget()
@@ -87,3 +95,33 @@ def test_detach_stops_capture(log_widget):
     logger.info("after detach")
     for log_source in LogSources:
         assert "after detach" not in _pane_text(log_widget, log_source)
+
+
+def test_save_state_writes_pane_heights(log_widget, mock_gui_preferences):
+    with patch.object(log_widget.splitter, "sizes", return_value=[110, 120, 130, 140]):
+        log_widget.save_state()
+    assert mock_gui_preferences.log_pane_s3_height == 110
+    assert mock_gui_preferences.log_pane_dynamodb_height == 120
+    assert mock_gui_preferences.log_pane_github_height == 130
+    assert mock_gui_preferences.log_pane_application_height == 140
+
+
+def test_restore_state_applies_saved_pane_heights(log_widget, mock_gui_preferences):
+    mock_gui_preferences.log_pane_s3_height = 150
+    mock_gui_preferences.log_pane_dynamodb_height = 60
+    mock_gui_preferences.log_pane_github_height = 250
+    mock_gui_preferences.log_pane_application_height = 90
+    with patch.object(log_widget.splitter, "setSizes") as mock_set_sizes:
+        log_widget.restore_state()
+    mock_set_sizes.assert_called_once_with([150, 60, 250, 90])
+
+
+def test_restore_state_makes_every_pane_visible(log_widget, mock_gui_preferences):
+    # unset or collapsed-to-zero panes come back at the minimum height so none are invisible
+    mock_gui_preferences.log_pane_s3_height = 0
+    mock_gui_preferences.log_pane_dynamodb_height = None
+    mock_gui_preferences.log_pane_github_height = 10
+    mock_gui_preferences.log_pane_application_height = 300
+    with patch.object(log_widget.splitter, "setSizes") as mock_set_sizes:
+        log_widget.restore_state()
+    mock_set_sizes.assert_called_once_with([minimum_pane_height, minimum_pane_height, minimum_pane_height, 300])

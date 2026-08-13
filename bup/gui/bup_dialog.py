@@ -104,6 +104,7 @@ class BupDialog(QDialog):
         self.run_backup_widget.stop()
         self.run_backup_widget.wait_for_threads(5000)
         self.log_widget.detach()
+        self.log_widget.save_state()
         self.run_backup_widget.save_state()
         preferences = get_preferences(UITypes.gui)
         preferences.width = self.width()

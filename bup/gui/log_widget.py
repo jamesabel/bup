@@ -7,10 +7,13 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPlainTextEdit, Q
 from balsa import get_logger
 
 from bup import __application_name__
+from bup.gui import get_gui_preferences
 
 log = get_logger(__application_name__)
 
 max_log_lines = 10000
+
+minimum_pane_height = 50  # pixels
 
 log_line_format = "%(asctime)s %(levelname)s %(filename)s:%(lineno)d %(threadName)s %(message)s"
 
@@ -101,6 +104,27 @@ class LogWidget(QWidget):
         self.log_handler.setLevel(logging.DEBUG)  # display everything the logger's own level lets through (e.g. DEBUG with the verbose preference)
         self.log_handler.emitter.log_line_signal.connect(self.append_log_line)
         logging.getLogger(__application_name__).addHandler(self.log_handler)
+
+        self.restore_state()
+
+    def get_pane_height_key(self, log_source: LogSources) -> str:
+        return f"log_pane_{log_source.name}_height"
+
+    def save_state(self):
+        preferences = get_gui_preferences()
+        for log_source, pane_height in zip(LogSources, self.splitter.sizes()):
+            setattr(preferences, self.get_pane_height_key(log_source), pane_height)
+
+    def restore_state(self):
+        preferences = get_gui_preferences()
+        pane_heights = []
+        for log_source in LogSources:
+            pane_height = getattr(preferences, self.get_pane_height_key(log_source))
+            # make sure every pane comes up visible, even if not set or the user has collapsed it to zero
+            if pane_height is None or int(pane_height) < minimum_pane_height:
+                pane_height = minimum_pane_height
+            pane_heights.append(int(pane_height))
+        self.splitter.setSizes(pane_heights)
 
     def append_log_line(self, log_source_value: str, line: str):
         self.log_panes[LogSources(log_source_value)].text_box.appendPlainText(line)

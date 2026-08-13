@@ -53,6 +53,10 @@ class BupPreferences(Pref):
     github_warnings_width: int = attrib(default=None)
     github_errors_height: int = attrib(default=None)
     github_errors_width: int = attrib(default=None)
+    log_pane_s3_height: int = attrib(default=None)
+    log_pane_dynamodb_height: int = attrib(default=None)
+    log_pane_github_height: int = attrib(default=None)
+    log_pane_application_height: int = attrib(default=None)
 
 
 def get_preferences(ui_type: UITypes) -> BupPreferences:

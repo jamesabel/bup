@@ -55,6 +55,7 @@ def _make_fake_about_widget(parent=None):
 def _make_fake_log_widget(parent=None):
     w = QWidget(parent)
     w.detach = MagicMock()
+    w.save_state = MagicMock()
     return w
 
 
