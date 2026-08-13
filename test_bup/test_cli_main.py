@@ -9,6 +9,7 @@ def _make_args(**overrides):
         token="ghp_token",
         profile="default",
         dry_run=False,
+        size_only=False,
         exclude=None,
         s3=False,
         dynamodb=False,
@@ -26,13 +27,18 @@ def _make_engine(error_count: int = 0) -> MagicMock:
     return engine
 
 
+def _make_prefs() -> MagicMock:
+    # detailed file logging off - a bare MagicMock would look like a truthy directory and start writing log files
+    return MagicMock(detailed_log_directory=None, detailed_log_file_size_limit_mb=None)
+
+
 @patch("bup.cli.cli_main.S3Backup")
 @patch("bup.cli.cli_main.DynamoDBBackup")
 @patch("bup.cli.cli_main.GithubBackup")
 @patch("bup.cli.cli_main.Balsa")
 @patch("bup.cli.cli_main.get_preferences")
 def test_dry_run_true_written_to_preferences(mock_get_prefs, mock_balsa, mock_gh, mock_ddb, mock_s3):
-    prefs = MagicMock()
+    prefs = _make_prefs()
     mock_get_prefs.return_value = prefs
     from bup.cli.cli_main import cli_main
 
@@ -47,7 +53,7 @@ def test_dry_run_true_written_to_preferences(mock_get_prefs, mock_balsa, mock_gh
 @patch("bup.cli.cli_main.Balsa")
 @patch("bup.cli.cli_main.get_preferences")
 def test_dry_run_false_written_to_preferences(mock_get_prefs, mock_balsa, mock_gh, mock_ddb, mock_s3):
-    prefs = MagicMock()
+    prefs = _make_prefs()
     mock_get_prefs.return_value = prefs
     from bup.cli.cli_main import cli_main
 
@@ -61,8 +67,25 @@ def test_dry_run_false_written_to_preferences(mock_get_prefs, mock_balsa, mock_g
 @patch("bup.cli.cli_main.GithubBackup")
 @patch("bup.cli.cli_main.Balsa")
 @patch("bup.cli.cli_main.get_preferences")
+def test_size_only_written_to_preferences(mock_get_prefs, mock_balsa, mock_gh, mock_ddb, mock_s3):
+    prefs = _make_prefs()
+    mock_get_prefs.return_value = prefs
+    from bup.cli.cli_main import cli_main
+
+    cli_main(_make_args(size_only=True))
+    assert prefs.s3_size_only is True
+
+    cli_main(_make_args(size_only=False))
+    assert prefs.s3_size_only is False
+
+
+@patch("bup.cli.cli_main.S3Backup")
+@patch("bup.cli.cli_main.DynamoDBBackup")
+@patch("bup.cli.cli_main.GithubBackup")
+@patch("bup.cli.cli_main.Balsa")
+@patch("bup.cli.cli_main.get_preferences")
 def test_s3_backup_started_with_s3_flag(mock_get_prefs, mock_balsa, mock_gh, mock_ddb, mock_s3):
-    prefs = MagicMock()
+    prefs = _make_prefs()
     mock_get_prefs.return_value = prefs
     mock_engine = _make_engine()
     mock_s3.return_value = mock_engine
@@ -80,7 +103,7 @@ def test_s3_backup_started_with_s3_flag(mock_get_prefs, mock_balsa, mock_gh, moc
 @patch("bup.cli.cli_main.Balsa")
 @patch("bup.cli.cli_main.get_preferences")
 def test_aws_flag_starts_both_s3_and_dynamodb(mock_get_prefs, mock_balsa, mock_gh, mock_ddb, mock_s3):
-    prefs = MagicMock()
+    prefs = _make_prefs()
     mock_get_prefs.return_value = prefs
     s3_engine = _make_engine()
     ddb_engine = _make_engine()
@@ -100,7 +123,7 @@ def test_aws_flag_starts_both_s3_and_dynamodb(mock_get_prefs, mock_balsa, mock_g
 @patch("bup.cli.cli_main.Balsa")
 @patch("bup.cli.cli_main.get_preferences")
 def test_backup_errors_produce_nonzero_exit_code(mock_get_prefs, mock_balsa, mock_gh, mock_ddb, mock_s3):
-    prefs = MagicMock()
+    prefs = _make_prefs()
     mock_get_prefs.return_value = prefs
     mock_s3.return_value = _make_engine(error_count=2)
     from bup.cli.cli_main import cli_main
@@ -117,7 +140,7 @@ def test_backup_errors_produce_nonzero_exit_code(mock_get_prefs, mock_balsa, moc
 @patch("bup.cli.cli_main.Balsa")
 @patch("bup.cli.cli_main.get_preferences")
 def test_backup_without_errors_exits_normally(mock_get_prefs, mock_balsa, mock_gh, mock_ddb, mock_s3):
-    prefs = MagicMock()
+    prefs = _make_prefs()
     mock_get_prefs.return_value = prefs
     mock_s3.return_value = _make_engine(error_count=0)
     from bup.cli.cli_main import cli_main

@@ -48,7 +48,7 @@ python -m bup <path> -s    # CLI with S3 backup
 
 **Preferences:** SQLite-backed via the `pref` library with `attrs` data classes. CLI and GUI have separate preference stores. Exclusion lists (per backup type) support comment lines starting with `#`.
 
-**GUI:** PyQt5 tabbed dialog (`BupDialog`) with `RunBackupWidget`, `PreferencesWidget`, and `BupAbout` tabs.
+**GUI:** PyQt5 tabbed dialog (`BupDialog`) with `RunBackupWidget`, `PreferencesWidget`, `LogWidget` (detailed application log via a logging handler), and `BupAbout` tabs.
 
 ## Code Style
 

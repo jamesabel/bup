@@ -25,7 +25,12 @@ class BupPreferences(Pref):
 
     dry_run: bool = attrib(default=False)
 
+    s3_size_only: bool = attrib(default=False)  # aws s3 sync --size-only (compare file size only, not timestamps)
+
     verbose: bool = attrib(default=False)
+
+    detailed_log_directory: str = attrib(default=None)  # None/blank = detailed file logging off
+    detailed_log_file_size_limit_mb: int = attrib(default=None)  # None = default limit
 
     height: int = attrib(default=None)
     width: int = attrib(default=None)
@@ -53,6 +58,10 @@ class BupPreferences(Pref):
     github_warnings_width: int = attrib(default=None)
     github_errors_height: int = attrib(default=None)
     github_errors_width: int = attrib(default=None)
+    log_pane_s3_height: int = attrib(default=None)
+    log_pane_dynamodb_height: int = attrib(default=None)
+    log_pane_github_height: int = attrib(default=None)
+    log_pane_application_height: int = attrib(default=None)
 
 
 def get_preferences(ui_type: UITypes) -> BupPreferences:

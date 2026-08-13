@@ -3,6 +3,7 @@ import sys
 from balsa import Balsa, get_logger
 
 from bup import __application_name__, __author__, __version__, S3Backup, DynamoDBBackup, GithubBackup, get_preferences, UITypes, ExclusionPreferences, BackupTypes
+from bup.log_routing import set_detailed_file_logging
 
 log = get_logger(__application_name__)
 
@@ -32,6 +33,7 @@ def cli_main(args):
 
     preferences = get_preferences(ui_type)
     preferences.backup_directory = args.path  # backup classes will read the preferences DB directly
+    set_detailed_file_logging(preferences.detailed_log_directory, preferences.detailed_log_file_size_limit_mb)  # one detailed log file per backup type, if configured
     # only overwrite saved values when explicitly given on the command line
     if args.token is not None:
         preferences.github_token = args.token
@@ -40,6 +42,7 @@ def cli_main(args):
     if args.region is not None:
         preferences.aws_region = args.region
     preferences.dry_run = args.dry_run
+    preferences.s3_size_only = args.size_only
 
     # Set the exclusions for the selected backup type(s).  The values are stored for subsequent runs.
     # An explicitly empty -e (no values) clears the stored exclusions.

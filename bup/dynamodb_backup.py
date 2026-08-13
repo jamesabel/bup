@@ -21,7 +21,7 @@ class DynamoDBBackup(BupBase):
 
     backup_type = BackupTypes.DynamoDB
 
-    def run(self):
+    def run_backup(self):
         preferences = get_preferences(self.ui_type)
         backup_directory = preferences.backup_directory
         dry_run = preferences.dry_run

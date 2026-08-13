@@ -50,6 +50,21 @@ def get_bucket_size(s3_client, bucket_name: str) -> Tuple[int, int]:
     return total_size, object_count
 
 
+def count_synced_files(sync_stdout: str) -> int:
+    """
+    Number of files "aws s3 sync" transferred (or would transfer, for a dry run), from its stdout -
+    the CLI emits one "download:" (or "copy:") line per file, and nothing for files already up to date.
+    """
+    synced_count = 0
+    for line in sync_stdout.splitlines():
+        line = line.strip()
+        if line.startswith("(dryrun) "):
+            line = line[len("(dryrun) ") :]
+        if line.startswith(("download:", "copy:")):
+            synced_count += 1
+    return synced_count
+
+
 def compare_backup_sizes(s3_total_size: int, local_size: int) -> Tuple[str, str]:
     """
     Rough check that the sync worked, based on total sizes.
@@ -86,10 +101,11 @@ class S3Backup(BupBase):
                     break
         return process.returncode, stdout.decode(decoding, errors="replace"), stderr.decode(decoding, errors="replace")
 
-    def run(self):
+    def run_backup(self):
 
         preferences = get_preferences(self.ui_type)
         dry_run = preferences.dry_run
+        size_only = preferences.s3_size_only
 
         backup_directory = os.path.join(preferences.backup_directory, "s3")
 
@@ -122,6 +138,7 @@ class S3Backup(BupBase):
 
         count = 0
         dry_run_count = 0
+        total_synced_count = 0
         exclusions_no_comments = ExclusionPreferences(BackupTypes.S3.name).get_no_comments()
         for bucket_name in buckets:
             if self.stop_requested:
@@ -142,6 +159,8 @@ class S3Backup(BupBase):
             s3_bucket_path = f"s3://{bucket_name}"
             # Don't use --delete.  We want to keep 'old' files locally.
             sync_command_line = [str(aws_cli_path), "s3", "sync", s3_bucket_path, str(destination.absolute())]
+            if size_only:
+                sync_command_line.append("--size-only")
             if dry_run:
                 sync_command_line.append("--dryrun")
             log.info(subprocess.list2cmdline(sync_command_line))
@@ -165,9 +184,13 @@ class S3Backup(BupBase):
                 self.error_out(f"aws s3 sync failed (exit code {sync_returncode}) for {bucket_name}")
                 continue  # don't count or verify a failed sync
 
+            synced_count = count_synced_files(sync_stdout)
+            total_synced_count += synced_count
+
             # check the results (skip during dry run - nothing was synced)
             if dry_run:
                 dry_run_count += 1
+                self.info_out(f"{bucket_name} : {synced_count} files would be synced")
                 continue
 
             try:
@@ -180,9 +203,11 @@ class S3Backup(BupBase):
             local_size, local_count = get_dir_size(destination)
             level, message = compare_backup_sizes(s3_total_size, local_size)
             output_routines = {"error": self.error_out, "info": log.info}
-            output_routines[level](f"{bucket_name} : {message} (s3_count={s3_object_count}, local_count={local_count}; s3_total_size={s3_total_size}, local_size={local_size})")
+            output_routines[level](
+                f"{bucket_name} : {message} (synced={synced_count}, s3_count={s3_object_count}, local_count={local_count}; s3_total_size={s3_total_size}, local_size={local_size})"
+            )
 
         if dry_run:
-            self.info_out(f"{len(buckets)} buckets, {dry_run_count} dry run, {len(exclusions_no_comments)} excluded")
+            self.info_out(f"{len(buckets)} buckets, {dry_run_count} dry run, {total_synced_count} files would be synced, {len(exclusions_no_comments)} excluded")
         else:
-            self.info_out(f"{len(buckets)} buckets, {count} backed up, {len(exclusions_no_comments)} excluded")
+            self.info_out(f"{len(buckets)} buckets, {count} backed up, {total_synced_count} files synced, {len(exclusions_no_comments)} excluded")
