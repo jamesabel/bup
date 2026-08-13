@@ -4,8 +4,17 @@ from PyQt5.QtWidgets import QVBoxLayout, QWidget, QTextBrowser
 from balsa import get_logger
 
 from bup import __url__, __author_url__, __version__, __application_name__
+from bup.aws_cli import find_aws_cli, make_aws_cli_env, get_aws_cli_version
 
 log = get_logger(__application_name__)
+
+
+def get_aws_cli_version_text() -> str:
+    aws_cli_path, python_path = find_aws_cli()
+    if aws_cli_path is None:
+        return "not found"
+    aws_cli_version = get_aws_cli_version(aws_cli_path, make_aws_cli_env(python_path))
+    return aws_cli_version if aws_cli_version is not None else "unknown"
 
 
 class BupAbout(QWidget):
@@ -28,6 +37,7 @@ class BupAbout(QWidget):
         if license_path is not None and license_path.exists() and license_path.is_file():
 
             about_text = f"### BUP ({__version__})\n\n"
+            about_text += f"AWS CLI version: {get_aws_cli_version_text()}\n\n"
             about_text += license_path.read_text()
             about_text += "\n---\n"
             about_text += f"\nsource code: [{__url__}]({__url__})\n"

@@ -2,12 +2,23 @@ import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+import pytest
 from botocore.exceptions import ClientError, NoCredentialsError
 
 from bup import UITypes
 from bup.s3_backup import S3Backup, compare_backup_sizes, get_bucket_size, get_dir_size
 
 fake_aws_cli = (Path("aws"), Path("python"))
+
+
+@pytest.fixture(autouse=True)
+def up_to_date_aws_cli():
+    # keep run() tests from shelling out to a real AWS CLI or hitting PyPI for the version check
+    with (
+        patch("bup.s3_backup.get_aws_cli_version", return_value="1.0.0"),
+        patch("bup.s3_backup.get_latest_awscli_version", return_value="1.0.0"),
+    ):
+        yield
 
 
 class FakePaginator:
@@ -164,6 +175,26 @@ def test_failed_sync_surfaces_error_and_skips_verification(mock_get_prefs, mock_
 
     assert any("aws s3 sync failed" in e for e in errors)
     assert any("0 backed up" in i for i in infos)
+
+
+@patch("bup.s3_backup.find_aws_cli", return_value=fake_aws_cli)
+@patch("bup.s3_backup.ExclusionPreferences")
+@patch("bup.s3_backup.S3Access")
+@patch("bup.s3_backup.get_preferences")
+def test_outdated_aws_cli_surfaces_warning(mock_get_prefs, mock_s3_access, mock_exclusions, mock_find_aws_cli, tmp_path):
+    mock_get_prefs.return_value = _make_preferences(tmp_path, dry_run=True)
+    mock_s3_access.return_value.bucket_list.return_value = []
+    mock_exclusions.return_value.get_no_comments.return_value = []
+    warnings = []
+    backup = _make_backup(warning=warnings.append)
+
+    with (
+        patch("bup.s3_backup.get_aws_cli_version", return_value="1.0.0"),
+        patch("bup.s3_backup.get_latest_awscli_version", return_value="1.1.0"),
+    ):
+        backup.run()
+
+    assert any("not the latest" in w for w in warnings)
 
 
 @patch("bup.s3_backup.get_bucket_size")
