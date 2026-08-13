@@ -25,6 +25,8 @@ class BupPreferences(Pref):
 
     dry_run: bool = attrib(default=False)
 
+    s3_size_only: bool = attrib(default=False)  # aws s3 sync --size-only (compare file size only, not timestamps)
+
     verbose: bool = attrib(default=False)
 
     detailed_log_directory: str = attrib(default=None)  # None/blank = detailed file logging off

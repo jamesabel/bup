@@ -152,6 +152,11 @@ class PreferencesWidget(QWidget):
         self.dry_run_check_box.clicked.connect(self.dry_run_clicked)
         self.layout().addWidget(self.dry_run_check_box)
 
+        # S3 sync --size-only
+        self.s3_size_only_check_box = QCheckBox("S3 sync compares file size only, not timestamps (--size-only)")
+        self.s3_size_only_check_box.clicked.connect(self.s3_size_only_clicked)
+        self.layout().addWidget(self.s3_size_only_check_box)
+
         # verbose
         self.verbose_check_box = QCheckBox("Verbose")
         self.verbose_check_box.clicked.connect(self.verbose_clicked)
@@ -173,6 +178,7 @@ class PreferencesWidget(QWidget):
         if preferences.detailed_log_file_size_limit_mb is not None:
             self.detailed_log_file_size_limit.setValue(preferences.detailed_log_file_size_limit_mb)
         self.dry_run_check_box.setChecked(bool(preferences.dry_run))  # None translates to False
+        self.s3_size_only_check_box.setChecked(bool(preferences.s3_size_only))  # None translates to False
         self.verbose_check_box.setChecked(bool(preferences.verbose))  # None translates to False
         self.automatic_backup_enable_check_box.setChecked(bool(preferences.automatic_backup))
         if preferences.backup_period is not None:
@@ -238,6 +244,9 @@ class PreferencesWidget(QWidget):
 
     def dry_run_clicked(self):
         get_gui_preferences().dry_run = self.dry_run_check_box.isChecked()
+
+    def s3_size_only_clicked(self):
+        get_gui_preferences().s3_size_only = self.s3_size_only_check_box.isChecked()
 
     def automatic_backup_changed(self):
         preferences = get_gui_preferences()

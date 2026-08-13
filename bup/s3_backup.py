@@ -105,6 +105,7 @@ class S3Backup(BupBase):
 
         preferences = get_preferences(self.ui_type)
         dry_run = preferences.dry_run
+        size_only = preferences.s3_size_only
 
         backup_directory = os.path.join(preferences.backup_directory, "s3")
 
@@ -158,6 +159,8 @@ class S3Backup(BupBase):
             s3_bucket_path = f"s3://{bucket_name}"
             # Don't use --delete.  We want to keep 'old' files locally.
             sync_command_line = [str(aws_cli_path), "s3", "sync", s3_bucket_path, str(destination.absolute())]
+            if size_only:
+                sync_command_line.append("--size-only")
             if dry_run:
                 sync_command_line.append("--dryrun")
             log.info(subprocess.list2cmdline(sync_command_line))

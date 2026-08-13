@@ -38,6 +38,7 @@ def arguments():
         parser.add_argument("-r", "--region", help="AWS region (uses the default AWS region if not given)")
         parser.add_argument("-t", "--token", help="github token (saved and used on subsequent runs)")
         parser.add_argument("--dry_run", action="store_true", default=False, help="displays operations that would be performed using the specified command without actually running them")
+        parser.add_argument("--size_only", action="store_true", default=False, help="AWS S3 sync compares file size only, not timestamps (aws s3 sync --size-only)")
         parser.add_argument(f"--{version_string}", action="store_true", default=False, help="display version and exit")
         parser.add_argument("-v", f"--{verbose_arg_string}", dest=verbose_arg_string, action="store_true", default=False, help="set verbose")
         parser.add_argument("-l", f"--{log_dir_arg_string}", dest=log_dir_arg_string, help="log dir")

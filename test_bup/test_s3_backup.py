@@ -41,10 +41,11 @@ def _make_backup(info=None, warning=None, error=None) -> S3Backup:
     return S3Backup(UITypes.cli, info or (lambda s: None), warning or (lambda s: None), error or (lambda s: None))
 
 
-def _make_preferences(tmp_path: Path, dry_run: bool = False) -> MagicMock:
+def _make_preferences(tmp_path: Path, dry_run: bool = False, s3_size_only: bool = False) -> MagicMock:
     preferences = MagicMock()
     preferences.backup_directory = str(tmp_path)
     preferences.dry_run = dry_run
+    preferences.s3_size_only = s3_size_only
     preferences.aws_profile = None
     preferences.aws_access_key_id = None
     preferences.aws_secret_access_key = None
@@ -151,6 +152,24 @@ def test_excluded_bucket_is_not_synced(mock_get_prefs, mock_s3_access, mock_excl
     sync_command_line = mock_subprocess.call_args.args[0]
     assert any("backed-up-bucket" in part for part in sync_command_line)
     assert "--dryrun" in sync_command_line
+    assert "--size-only" not in sync_command_line  # off by default
+
+
+@patch("bup.s3_backup.find_aws_cli", return_value=fake_aws_cli)
+@patch("bup.s3_backup.ExclusionPreferences")
+@patch("bup.s3_backup.S3Access")
+@patch("bup.s3_backup.get_preferences")
+def test_size_only_preference_adds_the_flag(mock_get_prefs, mock_s3_access, mock_exclusions, mock_find_aws_cli, tmp_path):
+    mock_get_prefs.return_value = _make_preferences(tmp_path, dry_run=True, s3_size_only=True)
+    mock_s3_access.return_value.bucket_list.return_value = ["my-bucket"]
+    mock_exclusions.return_value.get_no_comments.return_value = []
+    backup = _make_backup()
+
+    with patch.object(S3Backup, "run_stoppable_subprocess", return_value=(0, "", "")) as mock_subprocess:
+        backup.run()
+
+    sync_command_line = mock_subprocess.call_args.args[0]
+    assert "--size-only" in sync_command_line
 
 
 @patch("bup.s3_backup.get_bucket_size")

@@ -42,6 +42,7 @@ def cli_main(args):
     if args.region is not None:
         preferences.aws_region = args.region
     preferences.dry_run = args.dry_run
+    preferences.s3_size_only = args.size_only
 
     # Set the exclusions for the selected backup type(s).  The values are stored for subsequent runs.
     # An explicitly empty -e (no values) clears the stored exclusions.
