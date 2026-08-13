@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from bup import __application_name__, GithubBackup, UITypes
-from bup.log_routing import set_detailed_file_logging
+from bup.log_routing import DetailedFileLogHandler, set_detailed_file_logging
 
 logger = logging.getLogger(__application_name__)
 
@@ -85,6 +85,48 @@ def test_changing_the_directory_moves_the_files(tmp_path, info_level_logger):
     assert "first directory line" in first_text
     assert "second directory line" not in first_text
     assert "second directory line" in second_text
+
+
+def test_file_size_limit_rotates(tmp_path, info_level_logger):
+    max_bytes = 300
+    handler = DetailedFileLogHandler(tmp_path, max_bytes=max_bytes)
+    logger.addHandler(handler)
+    try:
+        line_count = 50
+        for i in range(line_count):
+            logger.info(f"line {i:04d}")
+    finally:
+        logger.removeHandler(handler)
+        handler.close()
+
+    log_path = Path(tmp_path, "application.log")
+    rotated_path = Path(tmp_path, "application.log.1")
+    assert rotated_path.exists()
+    # the current file is always under the limit (it rotates as soon as it reaches it) - it may not even
+    # exist if the very last line triggered a rotation
+    if log_path.exists():
+        assert log_path.stat().st_size < max_bytes
+    # older rotations are dropped, so total retained lines are far fewer than were written
+    retained = (log_path.read_text(encoding="utf-8") if log_path.exists() else "") + rotated_path.read_text(encoding="utf-8")
+    assert 0 < len(retained.splitlines()) < line_count
+    # the newest line is always retained
+    assert f"line {line_count - 1:04d}" in retained
+
+
+def test_file_size_limit_only_rotates_the_large_file(tmp_path, info_level_logger):
+    handler = DetailedFileLogHandler(tmp_path, max_bytes=300)
+    logger.addHandler(handler)
+    try:
+        for i in range(50):
+            logger.info(f"line {i:04d}")
+        _emit_record_from_file("github_backup.py", "just one small github line")
+    finally:
+        logger.removeHandler(handler)
+        handler.close()
+
+    assert Path(tmp_path, "application.log.1").exists()
+    assert not Path(tmp_path, "github.log.1").exists()
+    assert "github line" in Path(tmp_path, "github.log").read_text(encoding="utf-8")
 
 
 def test_directory_is_created_if_missing(tmp_path, info_level_logger):

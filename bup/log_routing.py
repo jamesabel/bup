@@ -39,20 +39,36 @@ def get_log_source(record: logging.LogRecord) -> LogSources:
     return log_sources_by_filename.get(record.filename, LogSources.application)
 
 
+bytes_per_mb = 1024 * 1024
+default_file_size_limit_mb = 10
+
+
 class DetailedFileLogHandler(logging.Handler):
     """
     Writes every log record to a file per log source in the given directory (s3.log, dynamodb.log, github.log, application.log),
     so each backup type's full details (e.g. the AWS CLI calls and their stdout/stderr) are captured separately.
+    When a file reaches max_bytes it is rotated to <name>.log.1 (replacing any previous rotation), so each source uses
+    at most about twice max_bytes of disk.
     """
 
-    def __init__(self, directory: Union[str, Path]):
+    def __init__(self, directory: Union[str, Path], max_bytes: int = default_file_size_limit_mb * bytes_per_mb):
         super().__init__()
         self.directory = Path(directory)
+        self.max_bytes = max_bytes
         self.setFormatter(logging.Formatter(log_line_format))
         self.files: Dict[LogSources, TextIO] = {}
 
     def get_log_file_path(self, log_source: LogSources) -> Path:
         return Path(self.directory, f"{log_source.name}.log")
+
+    def rotate(self, log_source: LogSources):
+        file = self.files.pop(log_source)
+        file.close()
+        log_file_path = self.get_log_file_path(log_source)
+        rotated_path = Path(f"{log_file_path}.1")
+        if rotated_path.exists():
+            rotated_path.unlink()
+        log_file_path.rename(rotated_path)
 
     def emit(self, record: logging.LogRecord):
         log_source = get_log_source(record)
@@ -65,6 +81,8 @@ class DetailedFileLogHandler(logging.Handler):
                 self.files[log_source] = file
             file.write(f"{self.format(record)}\n")
             file.flush()  # the point of this log is diagnosing problems - don't lose lines on a crash
+            if file.tell() >= self.max_bytes:
+                self.rotate(log_source)  # the next record reopens the (fresh) file lazily
         except OSError:
             self.handleError(record)
 
@@ -85,10 +103,11 @@ class DetailedFileLogHandler(logging.Handler):
 _detailed_file_log_handler: Optional[DetailedFileLogHandler] = None
 
 
-def set_detailed_file_logging(directory: Optional[Union[str, Path]]):
+def set_detailed_file_logging(directory: Optional[Union[str, Path]], file_size_limit_mb: Optional[int] = None):
     """
     Write detailed logs to the given directory (one file per log source), replacing any previous detailed log directory.
-    None (or blank) turns detailed file logging off.
+    None (or blank) turns detailed file logging off. file_size_limit_mb caps each log file's size (rotating to a single
+    .1 backup); None or a non-positive value uses the default.
     """
     global _detailed_file_log_handler
     logger = logging.getLogger(__application_name__)
@@ -98,6 +117,8 @@ def set_detailed_file_logging(directory: Optional[Union[str, Path]]):
         _detailed_file_log_handler = None
     directory_string = "" if directory is None else str(directory).strip()
     if len(directory_string) > 0:
-        _detailed_file_log_handler = DetailedFileLogHandler(Path(directory_string))
+        if file_size_limit_mb is None or file_size_limit_mb <= 0:
+            file_size_limit_mb = default_file_size_limit_mb
+        _detailed_file_log_handler = DetailedFileLogHandler(Path(directory_string), max_bytes=file_size_limit_mb * bytes_per_mb)
         _detailed_file_log_handler.setLevel(logging.DEBUG)  # capture everything the logger's own level lets through
         logger.addHandler(_detailed_file_log_handler)

@@ -28,6 +28,7 @@ class BupPreferences(Pref):
     verbose: bool = attrib(default=False)
 
     detailed_log_directory: str = attrib(default=None)  # None/blank = detailed file logging off
+    detailed_log_file_size_limit_mb: int = attrib(default=None)  # None = default limit
 
     height: int = attrib(default=None)
     width: int = attrib(default=None)

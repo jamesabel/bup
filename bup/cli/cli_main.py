@@ -33,7 +33,7 @@ def cli_main(args):
 
     preferences = get_preferences(ui_type)
     preferences.backup_directory = args.path  # backup classes will read the preferences DB directly
-    set_detailed_file_logging(preferences.detailed_log_directory)  # one detailed log file per backup type, if configured
+    set_detailed_file_logging(preferences.detailed_log_directory, preferences.detailed_log_file_size_limit_mb)  # one detailed log file per backup type, if configured
     # only overwrite saved values when explicitly given on the command line
     if args.token is not None:
         preferences.github_token = args.token

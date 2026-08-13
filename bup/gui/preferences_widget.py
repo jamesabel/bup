@@ -4,7 +4,7 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QLabel, QFileDialog, QLineEdit, QCheckBox, QSpinBox
 
 from bup import get_preferences, UITypes
-from bup.log_routing import set_detailed_file_logging
+from bup.log_routing import set_detailed_file_logging, default_file_size_limit_mb
 
 
 def get_gui_preferences():
@@ -135,6 +135,13 @@ class PreferencesWidget(QWidget):
         self.detailed_log_widget.layout().addWidget(QLabel("Detailed Log Directory (blank for none):"))
         self.detailed_log_widget.layout().addWidget(self.detailed_log_directory_line_edit)
         self.detailed_log_widget.layout().addWidget(self.select_detailed_log_directory_button)
+        self.detailed_log_widget.layout().addWidget(QLabel("File size limit (MB):"))
+        self.detailed_log_file_size_limit = QSpinBox()
+        self.detailed_log_file_size_limit.setMinimum(1)
+        self.detailed_log_file_size_limit.setMaximum(10000)
+        self.detailed_log_file_size_limit.setValue(default_file_size_limit_mb)
+        self.detailed_log_file_size_limit.valueChanged.connect(self.detailed_log_file_size_limit_changed)
+        self.detailed_log_widget.layout().addWidget(self.detailed_log_file_size_limit)
         self.detailed_log_widget.layout().addStretch()
         self.layout().addWidget(self.detailed_log_widget)
         self.layout().addWidget(QLabel())  # space
@@ -163,6 +170,8 @@ class PreferencesWidget(QWidget):
         self.aws_region_line_edit.setText(preferences.aws_region)
         self.github_token_line_edit.setText(preferences.github_token)
         self.detailed_log_directory_line_edit.setText(preferences.detailed_log_directory)
+        if preferences.detailed_log_file_size_limit_mb is not None:
+            self.detailed_log_file_size_limit.setValue(preferences.detailed_log_file_size_limit_mb)
         self.dry_run_check_box.setChecked(bool(preferences.dry_run))  # None translates to False
         self.verbose_check_box.setChecked(bool(preferences.verbose))  # None translates to False
         self.automatic_backup_enable_check_box.setChecked(bool(preferences.automatic_backup))
@@ -209,8 +218,12 @@ class PreferencesWidget(QWidget):
         get_gui_preferences().detailed_log_directory = self.detailed_log_directory_line_edit.text()
         self.detailed_log_apply_timer.start()
 
+    def detailed_log_file_size_limit_changed(self):
+        get_gui_preferences().detailed_log_file_size_limit_mb = self.detailed_log_file_size_limit.value()  # QSpinBox guarantees an int
+        self.detailed_log_apply_timer.start()
+
     def apply_detailed_log_directory(self):
-        set_detailed_file_logging(self.detailed_log_directory_line_edit.text())
+        set_detailed_file_logging(self.detailed_log_directory_line_edit.text(), self.detailed_log_file_size_limit.value())
 
     def github_visible_clicked(self):
         if self.github_token_line_edit.echoMode() == PreferencesLineEdit.Password:

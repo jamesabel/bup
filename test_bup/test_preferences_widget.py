@@ -14,6 +14,7 @@ def _make_mock_prefs(**overrides):
         aws_region="us-east-1",
         github_token="ghp_token",
         detailed_log_directory=None,
+        detailed_log_file_size_limit_mb=None,
         verbose=False,
         dry_run=False,
         automatic_backup=False,
@@ -132,7 +133,28 @@ def test_detailed_log_directory_changed(mock_get, mock_set_detailed, qapp, tmp_p
     mock_set_detailed.assert_not_called()
     w.detailed_log_apply_timer.stop()
     w.apply_detailed_log_directory()
-    mock_set_detailed.assert_called_once_with(str(tmp_path))
+    mock_set_detailed.assert_called_once_with(str(tmp_path), w.detailed_log_file_size_limit.value())
+
+
+@patch("bup.gui.preferences_widget.set_detailed_file_logging")
+@patch("bup.gui.preferences_widget.get_gui_preferences")
+def test_detailed_log_file_size_limit_changed(mock_get, mock_set_detailed, qapp):
+    prefs = _make_mock_prefs()
+    mock_get.return_value = prefs
+    w = PreferencesWidget()
+    w.detailed_log_file_size_limit.setValue(25)
+    assert prefs.detailed_log_file_size_limit_mb == 25
+    assert w.detailed_log_apply_timer.isActive()
+    w.detailed_log_apply_timer.stop()
+
+
+@patch("bup.gui.preferences_widget.set_detailed_file_logging")
+@patch("bup.gui.preferences_widget.get_gui_preferences")
+def test_detailed_log_file_size_limit_loaded(mock_get, mock_set_detailed, qapp):
+    mock_get.return_value = _make_mock_prefs(detailed_log_file_size_limit_mb=42)
+    w = PreferencesWidget()
+    assert w.detailed_log_file_size_limit.value() == 42
+    w.detailed_log_apply_timer.stop()
 
 
 @patch("bup.gui.preferences_widget.get_gui_preferences")

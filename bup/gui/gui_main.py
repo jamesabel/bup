@@ -26,7 +26,8 @@ def gui_main():
             balsa.sentry_dsn = sentry_dsn
     balsa.init_logger()
 
-    set_detailed_file_logging(get_gui_preferences().detailed_log_directory)
+    gui_preferences = get_gui_preferences()
+    set_detailed_file_logging(gui_preferences.detailed_log_directory, gui_preferences.detailed_log_file_size_limit_mb)
 
     app = QApplication([])
     bup_gui = BupDialog()
