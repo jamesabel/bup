@@ -1,3 +1,4 @@
+import threading
 from typing import Callable
 
 from PyQt5.QtCore import QThread, pyqtSignal
@@ -36,6 +37,17 @@ class BupBase(QThread):
         self.error_count = 0
         super().start(*args, **kwargs)
 
+    def run(self):
+        # QThreads aren't registered with Python's threading module by name, so log records would show a meaningless
+        # thread name like "Dummy-25" - name the thread after this backup class (guard so a direct run() call in
+        # tests doesn't rename the main thread)
+        if threading.current_thread() is not threading.main_thread():
+            threading.current_thread().name = type(self).__name__
+        self.run_backup()
+
+    def run_backup(self):
+        raise NotImplementedError
+
     def request_stop(self):
         self._stop_requested = True
 
@@ -51,9 +63,14 @@ class BupBase(QThread):
         else:
             self.info_out_signal.emit(s)
 
+    def _log_extra(self) -> dict:
+        # stamp the record with this engine's backup type so the GUI log tab can route it to the right pane
+        # (the record's own source location is this file, not the backup module the message came from)
+        return {"backup_type": self.backup_type}
+
     def _info_out(self, s: str):
         # hooked up to the signal for threading
-        log.info(s)
+        log.info(s, extra=self._log_extra())
         self.caller_info_out(s)
 
     def warning_out(self, s: str):
@@ -65,7 +82,7 @@ class BupBase(QThread):
 
     def _warning_out(self, s: str):
         # hooked up to the signal for threading
-        log.warning(s)
+        log.warning(s, extra=self._log_extra())
         self.caller_warning_out(s)
 
     def error_out(self, s: str):
@@ -78,5 +95,5 @@ class BupBase(QThread):
     def _error_out(self, s: str):
         # hooked up to the signal for threading
         self.error_count += 1
-        log.error(s)
+        log.error(s, extra=self._log_extra())
         self.caller_error_out(s)

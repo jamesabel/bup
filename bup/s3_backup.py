@@ -86,7 +86,7 @@ class S3Backup(BupBase):
                     break
         return process.returncode, stdout.decode(decoding, errors="replace"), stderr.decode(decoding, errors="replace")
 
-    def run(self):
+    def run_backup(self):
 
         preferences = get_preferences(self.ui_type)
         dry_run = preferences.dry_run

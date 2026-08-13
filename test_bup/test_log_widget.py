@@ -66,6 +66,18 @@ def test_dynamodb_records_route_to_dynamodb_pane(log_widget):
     assert "exporting my-table" not in _pane_text(log_widget, LogSources.application)
 
 
+def test_backup_engine_messages_route_by_backup_type(log_widget):
+    # info_out/warning_out/error_out messages are logged from bup_base.py, so they can't be routed by source file -
+    # BupBase stamps each record with its backup type instead (e.g. the "git pull ..." lines from the GitHub backup)
+    from bup import GithubBackup, UITypes
+
+    backup = GithubBackup(UITypes.cli, lambda s: None, lambda s: None, lambda s: None)
+    backup.info_out('git pull "owner/repo" branch:"main"')
+    assert "git pull" in _pane_text(log_widget, LogSources.github)
+    assert "git pull" not in _pane_text(log_widget, LogSources.application)
+    assert "git pull" not in _pane_text(log_widget, LogSources.s3)
+
+
 def test_other_records_route_to_application_pane(log_widget):
     logger.info("backup directory not set")  # logged from this test file, which is not a backup module
     assert "backup directory not set" in _pane_text(log_widget, LogSources.application)

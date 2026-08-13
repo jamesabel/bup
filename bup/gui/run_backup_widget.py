@@ -1,3 +1,4 @@
+import threading
 from enum import Enum
 from datetime import datetime
 
@@ -22,6 +23,7 @@ class RunAll(QThread):
         super().__init__()
 
     def run(self):
+        threading.current_thread().name = type(self).__name__  # QThreads otherwise show up in logs as "Dummy-N"
         for backup_type in self.widget.backup_engines:
             self.widget.backup_engines[backup_type].start()
         for backup_type in self.widget.backup_engines:

@@ -44,7 +44,7 @@ class GithubBackup(BupBase):
             s = s.replace(self._github_token, "***")
         return s
 
-    def run(self):
+    def run_backup(self):
         if shutil.which("git") is None:
             self.error_out("git executable not found in PATH - GitHub backup cannot run")
             return
