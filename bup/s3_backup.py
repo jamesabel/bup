@@ -12,7 +12,7 @@ logging.getLogger("boto3").setLevel(logging.WARNING)
 logging.getLogger("botocore").setLevel(logging.WARNING)
 
 from bup import __application_name__, BupBase, BackupTypes, get_preferences, ExclusionPreferences
-from bup.aws_cli import find_aws_cli, make_aws_cli_env, get_aws_cli_version, get_latest_awscli_version, check_aws_cli_version
+from bup.aws_cli import find_aws_cli, make_aws_cli_env, get_aws_cli_version, get_latest_awscli_version, check_aws_cli_version, subprocess_creation_flags
 
 log = get_logger(__application_name__)
 
@@ -89,7 +89,7 @@ class S3Backup(BupBase):
         Run a subprocess, polling for a stop request. On stop, terminate the subprocess so it isn't orphaned.
         :return: (returncode, stdout, stderr)
         """
-        process = subprocess.Popen(command_line, env=env_var, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        process = subprocess.Popen(command_line, env=env_var, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=subprocess_creation_flags)
         while True:
             try:
                 stdout, stderr = process.communicate(timeout=1.0)

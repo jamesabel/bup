@@ -16,6 +16,9 @@ log = get_logger(__application_name__)
 
 decoding = "utf-8"
 
+# on Windows, a console-less parent (e.g. the GUI app) spawning the AWS CLI would otherwise pop up a new console window
+subprocess_creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+
 awscli_pypi_url = "https://pypi.org/pypi/awscli/json"
 
 
@@ -64,7 +67,7 @@ def get_aws_cli_version(aws_cli_path: Path, env_var: dict) -> Optional[str]:
     """
     command_line = [str(aws_cli_path), "--version"]
     try:
-        result = subprocess.run(command_line, env=env_var, capture_output=True, timeout=60.0)
+        result = subprocess.run(command_line, env=env_var, capture_output=True, timeout=60.0, creationflags=subprocess_creation_flags)
     except (OSError, subprocess.SubprocessError) as e:
         log.warning(f'error executing {" ".join(command_line)} : {e}')
         return None
