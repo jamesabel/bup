@@ -73,5 +73,10 @@ class ExclusionPreferences(PrefOrderedSet):
         super().__init__(__application_name__, __author__, f"exclusions_{exclusion_type}")
 
     def get_no_comments(self) -> List[str]:
-        # get list of exclusions with comment and blank lines removed (tolerating leading whitespace)
-        return [s for s in super().get() if len(s.strip()) > 0 and not s.strip().startswith("#")]
+        """
+        Exclusion entries with rudimentary sanitization applied: comment lines (first non-whitespace character is "#")
+        and blank/whitespace-only lines are dropped, and leading/trailing whitespace is stripped from the remaining entries
+        so that e.g. "my-bucket " still matches "my-bucket".
+        """
+        stripped_entries = [s.strip() for s in super().get()]
+        return [s for s in stripped_entries if len(s) > 0 and not s.startswith("#")]
