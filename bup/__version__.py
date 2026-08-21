@@ -1,4 +1,4 @@
-__version__ = "0.13.2"
+__version__ = "0.13.3"
 __application_name__ = "bup"
 __title__ = __application_name__
 __author__ = "abel"
@@ -7,4 +7,3 @@ __author_url__ = "https://www.abel.co"
 __url__ = "https://github.com/jamesabel/bup"
 __download_url__ = __url__
 __description__ = "backup all your AWS S3 buckets and DynamoDB tables, and github repos to a backup directory/folder"
-
