@@ -38,6 +38,7 @@ dev = [
     "wheel",
     "black",
     "pytest",
+    "moto[server]",
     "coverage",
     "pytest-cov",
     "pyship",

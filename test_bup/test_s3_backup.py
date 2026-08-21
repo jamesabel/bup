@@ -2,8 +2,10 @@ import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+import boto3
 import pytest
 from botocore.exceptions import ClientError, NoCredentialsError
+from moto.server import ThreadedMotoServer
 
 from bup import UITypes
 from bup.s3_backup import S3Backup, compare_backup_sizes, count_synced_files, get_bucket_size, get_dir_size
@@ -60,6 +62,12 @@ def test_count_synced_files():
 
 def test_count_synced_files_dry_run():
     assert count_synced_files("(dryrun) download: s3://b/k.txt to dir\\k.txt\n") == 1
+
+
+def test_count_synced_files_slash_in_object_name():
+    # S3 object keys may contain "/" (folder-like keys); each key still counts as one file
+    sync_stdout = "download: s3://b/folder/sub folder/k1.txt to dir\\folder\\sub folder\\k1.txt\n(dryrun) download: s3://b/a/b/c/k2.txt to dir\\a\\b\\c\\k2.txt\n"
+    assert count_synced_files(sync_stdout) == 2
 
 
 def test_count_synced_files_nothing_to_do():
@@ -266,6 +274,69 @@ def test_synced_file_count_in_dry_run_summary(mock_get_prefs, mock_s3_access, mo
         backup.run()
 
     assert any("1 files would be synced" in i for i in infos)
+
+
+@pytest.fixture
+def moto_s3_endpoint(monkeypatch, tmp_path):
+    """
+    A local in-memory S3 server, with the environment set up so both in-process boto3/awsimple and the
+    AWS CLI subprocess (via AWS_ENDPOINT_URL) talk to it instead of real AWS.
+    """
+    server = ThreadedMotoServer(ip_address="127.0.0.1", port=0, verbose=False)
+    server.start()
+    host, port = server.get_host_and_port()
+    endpoint_url = f"http://{host}:{port}"
+    monkeypatch.setenv("AWS_ENDPOINT_URL", endpoint_url)
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
+    monkeypatch.setenv("AWS_SESSION_TOKEN", "testing")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    # keep any real AWS profile/config on this machine from leaking into the test
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", str(tmp_path / "no-credentials-file"))
+    monkeypatch.setenv("AWS_CONFIG_FILE", str(tmp_path / "no-config-file"))
+    yield endpoint_url
+    server.stop()
+
+
+@patch("bup.s3_backup.ExclusionPreferences")
+@patch("bup.s3_backup.get_preferences")
+def test_s3_sync_end_to_end_including_no_redownload(mock_get_prefs, mock_exclusions, moto_s3_endpoint, tmp_path):
+    """
+    Run the real "aws s3 sync" (the actual AWS CLI subprocess) against a local S3 server: the first backup
+    downloads everything, and a second backup re-downloads nothing since the objects are already backed up.
+    """
+    mock_get_prefs.return_value = _make_preferences(tmp_path)
+    mock_exclusions.return_value.get_no_comments.return_value = []
+
+    s3_client = boto3.client("s3", endpoint_url=moto_s3_endpoint)
+    s3_client.create_bucket(Bucket="e2e-bucket")
+    s3_client.put_object(Bucket="e2e-bucket", Key="top.txt", Body=b"top content")
+    s3_client.put_object(Bucket="e2e-bucket", Key="folder/nested.txt", Body=b"nested content")  # "/" in the object name
+
+    infos = []
+    errors = []
+    backup = _make_backup(info=infos.append, error=errors.append)
+    backup.run()
+
+    assert errors == []
+    top_file = tmp_path / "s3" / "e2e-bucket" / "top.txt"
+    nested_file = tmp_path / "s3" / "e2e-bucket" / "folder" / "nested.txt"
+    assert top_file.read_bytes() == b"top content"
+    assert nested_file.read_bytes() == b"nested content"
+    assert any("2 files synced" in i for i in infos)
+
+    modification_times = (top_file.stat().st_mtime_ns, nested_file.stat().st_mtime_ns)
+
+    second_infos = []
+    second_errors = []
+    second_backup = _make_backup(info=second_infos.append, error=second_errors.append)
+    second_backup.run()
+
+    assert second_errors == []
+    assert any("0 files synced" in i for i in second_infos)
+    # untouched files prove sync didn't re-download them
+    assert (top_file.stat().st_mtime_ns, nested_file.stat().st_mtime_ns) == modification_times
 
 
 @patch("bup.s3_backup.get_bucket_size")
