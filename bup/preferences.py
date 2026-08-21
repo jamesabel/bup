@@ -74,9 +74,11 @@ class ExclusionPreferences(PrefOrderedSet):
 
     def get_no_comments(self) -> List[str]:
         """
-        Exclusion entries with rudimentary sanitization applied: comment lines (first non-whitespace character is "#")
-        and blank/whitespace-only lines are dropped, and leading/trailing whitespace is stripped from the remaining entries
-        so that e.g. "my-bucket " still matches "my-bucket".
+        Exclusion entries with rudimentary sanitization applied: anything from a "#" to the end of the line is a comment
+        (so both whole-line comments and inline trailing comments such as "my-bucket  # note" are supported), comments and
+        blank/whitespace-only lines are dropped, and leading/trailing whitespace is stripped from the remaining entries
+        so that e.g. "my-bucket " still matches "my-bucket". "#" can not appear in S3 bucket, DynamoDB table, or GitHub
+        repo names, so there is no need for an escape.
         """
-        stripped_entries = [s.strip() for s in super().get()]
-        return [s for s in stripped_entries if len(s) > 0 and not s.startswith("#")]
+        entries_without_comments = [s.split("#", 1)[0].strip() for s in super().get()]
+        return [s for s in entries_without_comments if len(s) > 0]

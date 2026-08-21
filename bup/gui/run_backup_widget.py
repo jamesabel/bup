@@ -107,6 +107,9 @@ class BackupWidget(QGroupBox):
                 # read exclusions into the DB
                 exclusions = ExclusionPreferences(self.backup_type.name)
                 self.display_boxes[display_type].text_box.setText("\n".join(exclusions.get()))
+                self.display_boxes[display_type].text_box.setToolTip(
+                    "One name per line. '#' starts a comment (whole line or trailing, e.g. 'my-bucket  # note'). Blank lines and surrounding whitespace are ignored."
+                )
                 self.display_boxes[display_type].text_box.textChanged.connect(self.exclusions_save_timer.start)
             else:
                 self.display_boxes[display_type].text_box.setReadOnly(True)

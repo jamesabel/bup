@@ -46,7 +46,7 @@ python -m bup <path> -s    # CLI with S3 backup
 - `DynamoDBBackup` - Uses awsimple, exports tables to pickle and JSON
 - `GithubBackup` - Uses github3.py for API access, GitPython for git operations (clone/pull all branches)
 
-**Preferences:** SQLite-backed via the `pref` library with `attrs` data classes. CLI and GUI have separate preference stores. Exclusion lists (per backup type) support comment lines starting with `#`.
+**Preferences:** SQLite-backed via the `pref` library with `attrs` data classes. CLI and GUI have separate preference stores. Exclusion lists (per backup type) are sanitized by `ExclusionPreferences.get_no_comments()`: `#` starts a comment (whole-line or inline trailing), blank lines are dropped, and entries are whitespace-stripped (see README "Exclusions").
 
 **GUI:** PyQt5 tabbed dialog (`BupDialog`) with `RunBackupWidget`, `PreferencesWidget`, `LogWidget` (detailed application log via a logging handler), and `BupAbout` tabs.
 

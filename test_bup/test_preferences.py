@@ -41,9 +41,13 @@ def test_exclusions_sanitization():
         "bucket-a",
         "  bucket-b  ",  # leading/trailing whitespace is stripped
         "bucket-c	",
+        "bucket-d  # an inline trailing comment",
+        "bucket-e#no space before the comment",
+        "  bucket-f # comment with # another hash",
+        "#bucket-g",  # entirely commented out, even without a space
     ]
     exclusions.set(test_list)
-    assert exclusions.get_no_comments() == ["bucket-a", "bucket-b", "bucket-c"]
+    assert exclusions.get_no_comments() == ["bucket-a", "bucket-b", "bucket-c", "bucket-d", "bucket-e", "bucket-f"]
 
     # restore
     exclusions.set(saved_exclusions)
