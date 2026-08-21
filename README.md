@@ -8,7 +8,7 @@ Each backup type (S3, DynamoDB, GitHub) has an exclusion list: names to skip, on
 names, DynamoDB entries are table names, and GitHub entries are either a repo name (`my-repo`) or `owner/my-repo`.
 Exclusion lists are edited in the GUI's "Exclusions" box for each backup type.
 
-The list syntax is deliberately simple:
+The same syntax applies to all three lists (S3 buckets, DynamoDB tables, and GitHub repos):
 
 - `#` starts a comment that runs to the end of the line. This works for whole-line comments and for inline
   trailing comments, e.g. `my-bucket  # too big, backed up elsewhere`.
