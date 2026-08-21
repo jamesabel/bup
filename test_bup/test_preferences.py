@@ -27,3 +27,23 @@ def test_preferences():
 
     # restore
     exclusions.set(saved_exclusions)
+
+
+def test_exclusions_sanitization():
+    exclusions = ExclusionPreferences(BackupTypes.S3.name)
+    saved_exclusions = exclusions.get()
+    test_list = [
+        "# a comment",
+        "   # an indented comment",
+        "",
+        "   ",
+        "	",
+        "bucket-a",
+        "  bucket-b  ",  # leading/trailing whitespace is stripped
+        "bucket-c	",
+    ]
+    exclusions.set(test_list)
+    assert exclusions.get_no_comments() == ["bucket-a", "bucket-b", "bucket-c"]
+
+    # restore
+    exclusions.set(saved_exclusions)
