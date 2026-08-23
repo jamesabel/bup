@@ -99,7 +99,7 @@ class GithubBackup(BupBase):
                     except GitCommandError as e:
                         self.warning_out(self.redact(f'could not pull "{repo_dir}" - will try to start over and do a clone of "{repo_owner_and_name},{e}","{__file__}"'))
 
-                # new to us (or the pull failed, e.g. a force-pushed branch with a rewritten history) - clone the repo
+                # new to us (or the fetch/reset failed, e.g. a corrupt local clone) - clone the repo
                 if not pull_success:
                     try:
                         if repo_dir.exists():
@@ -145,6 +145,20 @@ class GithubBackup(BupBase):
                 except (GitCommandError, AttributeError, ValueError) as e:
                     log.warning(self.redact(f'could not set remote url for "{repo_dir}" : {e}'))
 
+            # A backup is a mirror: the goal is "local == remote, exactly", never to integrate histories.
+            # So this is fetch + hard reset to the remote-tracking ref (the model git itself uses for mirrors),
+            # not "git pull" - a merge would fail on any force-pushed branch (rebased feature branches,
+            # CI-owned branches such as gh-pages or badges, orphan branches) and trigger a needless full re-clone.
+            # One fetch per repo transfers every branch's objects in a single negotiation; --prune drops
+            # remote-tracking refs for branches deleted on GitHub so the local ref set stays honest.
+            self.info_out(f'git fetch "{repo_name}"')
+            try:
+                git_repo.git.fetch("--prune", "origin")
+            except GitCommandError as e:
+                # recoverable - the caller falls back to a fresh clone, and escalates to an error if that also fails
+                self.warning_out(self.redact(f"{repo_name} : {e}"))
+                return False
+
             for branch in branches:
                 if self.stop_requested:
                     break
@@ -154,17 +168,18 @@ class GithubBackup(BupBase):
                 if branch_name.lower() == "main" or (main_branch is None and branch_name.lower() == "master"):
                     main_branch = branch
 
-                self.info_out(f'git pull "{repo_name}" branch:"{branch_name}"')
+                self.info_out(f'git reset "{repo_name}" branch:"{branch_name}"')
                 try:
                     git_repo.git.reset("--hard")
                     git_repo.git.clean("-fd")
-                    git_repo.git.checkout(branch_name)
-                    git_repo.git.pull()
+                    git_repo.git.checkout(branch_name)  # creates a local tracking branch from origin/<name> on first sight
+                    git_repo.git.reset("--hard", f"origin/{branch_name}")
+                    git_repo.git.clean("-fd")
                     success = True
                 except GitCommandError as e:
                     if "did not match any file".lower() in str(e).lower():
                         # new branch with no files yet - skip it and continue with other branches
-                        self.info_out(f"git pull {repo_name} branch:{branch_name} - no files")
+                        self.info_out(f"git reset {repo_name} branch:{branch_name} - no files")
                         continue
                     elif "would be overwritten by checkout" in str(e).lower():
                         # typically caused by CRLF line-ending normalization on Windows, not actual user edits
@@ -172,7 +187,7 @@ class GithubBackup(BupBase):
                         success = False
                         break
                     else:
-                        # recoverable (e.g. a force-pushed branch whose rewritten history can't be merged) -
+                        # recoverable (e.g. a corrupt object store) -
                         # the caller falls back to a fresh clone, and escalates to an error if that also fails
                         self.warning_out(self.redact(f"{repo_name} : {e}"))
                         success = False

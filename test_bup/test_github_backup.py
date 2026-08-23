@@ -83,16 +83,15 @@ def test_reset_hard_called_before_switch(github_backup, tmp_path):
     assert reset_indices[-1] < switch_indices[0], "reset --hard must come before git switch"
 
 
-def test_other_git_errors_use_warning_out(github_backup, tmp_path):
+def test_fetch_failure_is_warning_not_error(github_backup, tmp_path):
     """
-    Unexpected git pull errors (e.g. 'refusing to merge unrelated histories' after a force-push)
-    are warnings, not errors - the caller falls back to a fresh clone and only escalates to an
-    error if that also fails.
+    A failed fetch (e.g. a corrupt local clone) is a warning, not an error - the caller falls back
+    to a fresh clone and only escalates to an error if that also fails.
     """
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir()
     mock_repo = MagicMock()
-    mock_repo.git.pull.side_effect = GitCommandError(["git", "pull"], 128, stderr=b"fatal: refusing to merge unrelated histories")
+    mock_repo.git.fetch.side_effect = GitCommandError(["git", "fetch"], 128, stderr=b"fatal: bad object HEAD")
 
     with patch("git.Repo", return_value=mock_repo):
         result = github_backup.pull_branches("owner/repo", [_branch("main")], repo_dir)
@@ -100,6 +99,33 @@ def test_other_git_errors_use_warning_out(github_backup, tmp_path):
     assert result is False
     assert len(github_backup._errors) == 0
     assert len(github_backup._warnings) == 1
+    mock_repo.git.checkout.assert_not_called()
+
+
+def test_mirror_is_fetch_once_then_reset_per_branch(github_backup, tmp_path):
+    """
+    A backup mirrors the remote: one `fetch --prune` per repo, then every branch is hard-reset to its
+    remote-tracking ref. `git pull` (a merge) must never be used - it fails on force-pushed or orphan
+    branches (rebased feature branches, CI-owned badges/gh-pages) and would force a full re-clone.
+    """
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    mock_repo = MagicMock()
+
+    with patch("git.Repo", return_value=mock_repo):
+        result = github_backup.pull_branches("owner/repo", [_branch("main"), _branch("badges")], repo_dir)
+
+    assert result is True
+    assert len(github_backup._warnings) == 0
+    git_calls = mock_repo.git.mock_calls
+    assert git_calls.count(call.fetch("--prune", "origin")) == 1
+    mock_repo.git.pull.assert_not_called()
+    for branch_name in ("main", "badges"):
+        checkout_index = git_calls.index(call.checkout(branch_name))
+        reset_index = git_calls.index(call.reset("--hard", f"origin/{branch_name}"))
+        assert checkout_index < reset_index, f"{branch_name}: checkout must precede reset to the remote-tracking ref"
+    fetch_index = git_calls.index(call.fetch("--prune", "origin"))
+    assert fetch_index < git_calls.index(call.checkout("main")), "fetch must precede every branch"
 
 
 def test_single_branch_no_switch(github_backup, tmp_path):
