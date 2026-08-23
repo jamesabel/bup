@@ -44,7 +44,7 @@ python -m bup <path> -s    # CLI with S3 backup
 **Three backup implementations:**
 - `S3Backup` - Uses awsimple + AWS CLI subprocess for bucket syncing
 - `DynamoDBBackup` - Uses awsimple, exports tables to pickle and JSON
-- `GithubBackup` - Uses github3.py for API access, GitPython for git operations (clone/pull all branches)
+- `GithubBackup` - Uses github3.py for API access, GitPython for git operations (clone, then mirror every branch by `fetch --prune` + `reset --hard origin/<branch>` - never `git pull`, so force-pushed/orphan branches never trigger a re-clone)
 
 **Preferences:** SQLite-backed via the `pref` library with `attrs` data classes. CLI and GUI have separate preference stores. Exclusion lists (per backup type) are sanitized by `ExclusionPreferences.get_no_comments()`: `#` starts a comment (whole-line or inline trailing), blank lines are dropped, and entries are whitespace-stripped (see README "Exclusions").
 
