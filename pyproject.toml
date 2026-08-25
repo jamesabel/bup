@@ -67,7 +67,10 @@ bup = ["bup.png", "bup.ico", "LICENSE", "gpl-3.0.md"]
 [tool.pyship]
 ui = "gui"
 upload = true
-public_readable = true
+# The pyship-abel-bup bucket is private now; installed copies self-update through the
+# gated feed on www.abel.co (see pyship launcher update_url).
+public_readable = false
+update_url = "https://www.abel.co/updates/bup"
 
 # registry settings pyship is using has been flagging a false positve on Windows defender so don't use run_on_startup for now
 run_on_startup = false
