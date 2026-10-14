@@ -48,6 +48,29 @@ directory is configured in Preferences, each backup type's log also goes to its 
 my-bucket : local backup is larger than S3 (files deleted from S3 are retained locally) (synced=3, s3_count=120, local_count=125; s3_total_size=10485760, local_size=10520000)
 ```
 
+## Diagnostics for a lower local file count, and for files that download every run
+
+`aws s3 sync` matches each S3 key against the local relative path as an exact string. Two consequences show up
+in the result lines, and bup explains both:
+
+- **Fewer local files than S3 objects** (`local_count` below `s3_count`). When this happens, bup lists the bucket
+  again and compares the keys to the local files. Zero-byte objects whose key ends in `/` (the S3 console's
+  "Create folder") are *folder markers* - `aws s3 sync` never downloads them, so they are expected to be absent and
+  are listed in the application log as info. Any other object with no local file at exactly its path is a
+  **warning** in the backup output, naming the object and, when a similarly named local file or directory exists,
+  how the names differ.
+- **A file that is downloaded on every run** even though it is already backed up. On Windows, file names are
+  case-insensitive and trailing spaces and dots are stripped, so a download can land in an existing file or
+  directory whose on-disk name differs from the S3 key. Sync then never sees an exact match and downloads the
+  file again each run. After each sync, bup checks the local name of every downloaded file against its key and
+  reports any difference (case, Unicode normalization, trailing space or dot) as a **warning** in the backup
+  output. The fix is to rename the local file or directory to match the key exactly, or delete the local copy
+  so the next sync recreates it with the key's name.
+
+```
+my-bucket : "static/vendor/select2.js" will be downloaded on every run until the local name matches the S3 key exactly : local name "Vendor" differs from S3 key "vendor" only in case
+```
+
 # Security Notes
 
 - Credentials you enter (AWS secret access key, GitHub token) are stored **unencrypted** in a local

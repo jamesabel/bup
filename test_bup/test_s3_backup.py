@@ -9,7 +9,7 @@ from botocore.exceptions import ClientError, NoCredentialsError
 from moto.server import ThreadedMotoServer
 
 from bup import UITypes, __application_name__
-from bup.s3_backup import S3Backup, compare_backup_sizes, count_synced_files, get_bucket_size, get_dir_size
+from bup.s3_backup import S3Backup, compare_backup_sizes, count_synced_files, find_s3_objects_without_local_file, get_bucket_size, get_dir_size, get_synced_keys, local_name_mismatches
 
 fake_aws_cli = (Path("aws"), Path("python"))
 
@@ -384,3 +384,189 @@ def test_verification_failure_surfaces_error(mock_get_prefs, mock_s3_access, moc
         backup.run()
 
     assert any("could not list contents" in e for e in errors)
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_get_synced_keys(tmp_path):
+    destination = tmp_path / "b"
+    sync_stdout = (
+        f"download: s3://b/k1.txt to {destination}{os.sep}k1.txt\n"
+        f"Completed 1 of 3 file(s)\n"
+        f"(dryrun) download: s3://b/folder/sub folder/k2.txt to {destination}{os.sep}folder{os.sep}sub folder{os.sep}k2.txt\n"
+        f"download: s3://b/a to b to {destination}{os.sep}a to b\n"  # a key containing " to "
+    )
+    assert get_synced_keys(sync_stdout, "b", destination) == ["k1.txt", "folder/sub folder/k2.txt", "a to b"]
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_get_synced_keys_unparseable_line_is_skipped_with_a_warning(tmp_path, caplog):
+    with caplog.at_level(logging.WARNING, logger=__application_name__):
+        synced_keys = get_synced_keys("download: s3://b/k.txt to somewhere\\else\\k.txt\n", "b", tmp_path / "b")
+    assert synced_keys == []
+    assert any("could not determine the S3 key" in record.getMessage() for record in caplog.records)
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_local_name_mismatches_exact_match(tmp_path):
+    (tmp_path / "vendor").mkdir()
+    (tmp_path / "vendor" / "a.js").write_bytes(b"x")
+    assert local_name_mismatches(tmp_path, "vendor/a.js") == []
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_local_name_mismatches_case(tmp_path):
+    (tmp_path / "Vendor").mkdir()
+    (tmp_path / "Vendor" / "A.js").write_bytes(b"x")
+    mismatches = local_name_mismatches(tmp_path, "vendor/a.js")
+    assert mismatches == ['local name "Vendor" differs from S3 key "vendor" only in case', 'local name "A.js" differs from S3 key "a.js" only in case']
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_local_name_mismatches_trailing_space(tmp_path):
+    (tmp_path / "report.pdf").write_bytes(b"x")  # what Windows stores for a key ending in a space
+    mismatches = local_name_mismatches(tmp_path, "report.pdf ")
+    assert any("ends with a space or dot" in m for m in mismatches)
+    assert any("without its trailing space or dot" in m for m in mismatches)
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_local_name_mismatches_unicode_normalization(tmp_path):
+    (tmp_path / "café.txt").write_bytes(b"x")  # decomposed (NFD) on disk
+    mismatches = local_name_mismatches(tmp_path, "café.txt")  # composed (NFC) key
+    assert len(mismatches) == 1
+    assert "only in Unicode normalization" in mismatches[0]
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_local_name_mismatches_nothing_similar(tmp_path):
+    # nothing similarly named is not a mismatch - it's the normal state before a download (e.g. in a dry run)
+    (tmp_path / "other.txt").write_bytes(b"x")
+    assert local_name_mismatches(tmp_path, "missing.txt") == []
+    assert local_name_mismatches(tmp_path, "no such dir/missing.txt") == []
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_local_name_mismatches_trailing_space_is_fine_when_stored_exactly(tmp_path):
+    # a filesystem that keeps trailing spaces (Linux/macOS) holds the key's name exactly - nothing to report
+    with patch("bup.s3_backup.os.listdir", return_value=["report.pdf "]):
+        assert local_name_mismatches(tmp_path, "report.pdf ") == []
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+@patch("bup.s3_backup.find_aws_cli", return_value=fake_aws_cli)
+@patch("bup.s3_backup.ExclusionPreferences")
+@patch("bup.s3_backup.S3Access")
+@patch("bup.s3_backup.get_preferences")
+def test_dry_run_of_a_new_file_is_not_a_mismatch(mock_get_prefs, mock_s3_access, mock_exclusions, mock_find_aws_cli, tmp_path):
+    # the file doesn't exist locally yet, which is exactly why it would be downloaded - no warning
+    mock_get_prefs.return_value = _make_preferences(tmp_path, dry_run=True)
+    mock_s3_access.return_value.bucket_list.return_value = ["my-bucket"]
+    mock_exclusions.return_value.get_no_comments.return_value = []
+    destination = tmp_path / "s3" / "my-bucket"
+    warnings = []
+    backup = _make_backup(warning=warnings.append)
+
+    sync_stdout = f"(dryrun) download: s3://my-bucket/new/a.js to {destination}{os.sep}new{os.sep}a.js\n"
+    with patch.object(S3Backup, "run_stoppable_subprocess", return_value=(0, sync_stdout, "")):
+        backup.run()
+
+    assert warnings == []
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_find_s3_objects_without_local_file(tmp_path):
+    (tmp_path / "present.txt").write_bytes(b"x")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "nested.txt").write_bytes(b"x")
+    (tmp_path / "Case.txt").write_bytes(b"x")
+    client = FakeS3Client(
+        [
+            {"Contents": [{"Key": "present.txt", "Size": 1}, {"Key": "sub/", "Size": 0}, {"Key": "sub/nested.txt", "Size": 1}]},
+            {"Contents": [{"Key": "empty/", "Size": 0}, {"Key": "case.txt", "Size": 1}, {"Key": "gone.txt", "Size": 1}]},
+            {},
+        ]
+    )
+    folder_marker_keys, missing_keys = find_s3_objects_without_local_file(client, "my-bucket", tmp_path)
+    assert folder_marker_keys == ["sub/", "empty/"]
+    assert missing_keys == ["case.txt", "gone.txt"]
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+@patch("bup.s3_backup.get_bucket_size", return_value=(1, 1))
+@patch("bup.s3_backup.find_aws_cli", return_value=fake_aws_cli)
+@patch("bup.s3_backup.ExclusionPreferences")
+@patch("bup.s3_backup.S3Access")
+@patch("bup.s3_backup.get_preferences")
+def test_downloaded_file_with_case_mismatch_is_explained(mock_get_prefs, mock_s3_access, mock_exclusions, mock_find_aws_cli, mock_get_bucket_size, tmp_path):
+    # the local copy exists under a different case, so sync (an exact match on the key) downloads it on every run
+    mock_get_prefs.return_value = _make_preferences(tmp_path)
+    mock_s3_access.return_value.bucket_list.return_value = ["my-bucket"]
+    mock_exclusions.return_value.get_no_comments.return_value = []
+    destination = tmp_path / "s3" / "my-bucket"
+    (destination / "Vendor").mkdir(parents=True)
+    (destination / "Vendor" / "a.js").write_bytes(b"x")
+    warnings = []
+    backup = _make_backup(warning=warnings.append)
+
+    sync_stdout = f"download: s3://my-bucket/vendor/a.js to {destination}{os.sep}vendor{os.sep}a.js\n"
+    with patch.object(S3Backup, "run_stoppable_subprocess", return_value=(0, sync_stdout, "")):
+        backup.run()
+
+    assert len(warnings) == 1
+    assert '"vendor/a.js" will be downloaded on every run' in warnings[0]
+    assert 'local name "Vendor" differs from S3 key "vendor" only in case' in warnings[0]
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+@patch("bup.s3_backup.get_bucket_size", return_value=(1, 3))
+@patch("bup.s3_backup.find_aws_cli", return_value=fake_aws_cli)
+@patch("bup.s3_backup.ExclusionPreferences")
+@patch("bup.s3_backup.S3Access")
+@patch("bup.s3_backup.get_preferences")
+def test_fewer_local_files_than_s3_objects_is_explained(mock_get_prefs, mock_s3_access, mock_exclusions, mock_find_aws_cli, mock_get_bucket_size, tmp_path, caplog):
+    # S3: one real file (backed up), one folder marker (expected to be absent locally), one object whose local name differs in case
+    mock_get_prefs.return_value = _make_preferences(tmp_path)
+    mock_s3_access.return_value.bucket_list.return_value = ["my-bucket"]
+    mock_s3_access.return_value.client = FakeS3Client([{"Contents": [{"Key": "a.txt", "Size": 1}, {"Key": "folder/", "Size": 0}, {"Key": "folder/b.txt", "Size": 0}]}])
+    mock_exclusions.return_value.get_no_comments.return_value = []
+    destination = tmp_path / "s3" / "my-bucket"
+    (destination / "Folder").mkdir(parents=True)
+    (destination / "a.txt").write_bytes(b"x")
+    (destination / "Folder" / "b.txt").write_bytes(b"")
+    warnings = []
+    backup = _make_backup(warning=warnings.append)
+
+    with (
+        patch.object(S3Backup, "run_stoppable_subprocess", return_value=(0, "", "")),
+        caplog.at_level(logging.INFO, logger=__application_name__),
+    ):
+        backup.run()
+
+    assert any("1 of the 1 S3 objects without a local file are zero-byte folder markers" in record.getMessage() and "folder/" in record.getMessage() for record in caplog.records)
+    assert len(warnings) == 1
+    assert 'S3 object "folder/b.txt" has no local file at exactly that path' in warnings[0]
+    assert 'local name "Folder" differs from S3 key "folder" only in case' in warnings[0]
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+@patch("bup.s3_backup.get_bucket_size", return_value=(1, 2))
+@patch("bup.s3_backup.find_aws_cli", return_value=fake_aws_cli)
+@patch("bup.s3_backup.ExclusionPreferences")
+@patch("bup.s3_backup.S3Access")
+@patch("bup.s3_backup.get_preferences")
+def test_missing_local_file_with_nothing_similar_is_still_reported(mock_get_prefs, mock_s3_access, mock_exclusions, mock_find_aws_cli, mock_get_bucket_size, tmp_path):
+    mock_get_prefs.return_value = _make_preferences(tmp_path)
+    mock_s3_access.return_value.bucket_list.return_value = ["my-bucket"]
+    mock_s3_access.return_value.client = FakeS3Client([{"Contents": [{"Key": "a.txt", "Size": 1}, {"Key": "gone.txt", "Size": 0}]}])
+    mock_exclusions.return_value.get_no_comments.return_value = []
+    destination = tmp_path / "s3" / "my-bucket"
+    destination.mkdir(parents=True)
+    (destination / "a.txt").write_bytes(b"x")
+    warnings = []
+    backup = _make_backup(warning=warnings.append)
+
+    with patch.object(S3Backup, "run_stoppable_subprocess", return_value=(0, "", "")):
+        backup.run()
+
+    assert len(warnings) == 1
+    assert 'S3 object "gone.txt" has no local file at exactly that path : no similarly named local file found' in warnings[0]
