@@ -72,6 +72,12 @@ upload = true
 public_readable = false
 update_url = "https://www.abel.co/updates/bup"
 
+# Sign the launcher and installer with the Sectigo code-signing certificate on the hardware token (Windows
+# certificate store, selected by thumbprint). The token PIN comes from the PYSHIP_SIGNING_CERTIFICATE_PIN
+# environment variable; a signing failure aborts the ship so an unsigned release can't go out by accident.
+code_sign = true
+certificate_sha1 = "6AE7810A68EABB5C80E7DD85BAE500AA4EDA5DE1"
+
 # registry settings pyship is using has been flagging a false positve on Windows defender so don't use run_on_startup for now
 run_on_startup = false
 
