@@ -22,6 +22,32 @@ logs-archive        # 2 TB, backed up by a lifecycle rule instead
 scratch-bucket
 ```
 
+# S3 backup verification
+
+After each bucket is synced (`aws s3 sync`, deliberately without `--delete` so that objects deleted from S3 are
+kept in the local backup), bup lists the bucket with boto3 and compares its total size in bytes to the total size
+of the local backup directory. The comparison is by bytes, not by object count, because `aws s3 sync` does not
+copy zero-length objects. The S3 object count and the local file count are included in the result line for
+reference only.
+
+There are three outcomes:
+
+- **S3 is larger than the local backup** - something was not backed up. This is reported as an **error** in the
+  backup output (the GUI's "Backup" tab, or the CLI's console output, where it also makes the CLI exit with a
+  non-zero status).
+- **Local backup is larger than S3** - expected over time, since deletions in S3 are retained locally. Logged as
+  info only.
+- **Match** - logged as info only.
+
+The info-level result lines are not shown in the backup output. They go to the application log: in the GUI this is
+the "Log" tab (the "AWS S3" pane), and in the CLI it is the console with `-v`/`--verbose`. If a detailed log
+directory is configured in Preferences, each backup type's log also goes to its own file there (`s3.log`,
+`dynamodb.log`, `github.log`, `application.log`). A result line looks like:
+
+```
+my-bucket : local backup is larger than S3 (files deleted from S3 are retained locally) (synced=3, s3_count=120, local_count=125; s3_total_size=10485760, local_size=10520000)
+```
+
 # Security Notes
 
 - Credentials you enter (AWS secret access key, GitHub token) are stored **unencrypted** in a local
