@@ -1,8 +1,9 @@
 import logging
 import subprocess
 import os
+import unicodedata
 from pathlib import Path
-from typing import Tuple
+from typing import List, NamedTuple, Optional, Tuple
 
 from awsimple import S3Access
 from botocore.exceptions import BotoCoreError, ClientError
@@ -17,6 +18,8 @@ from bup.aws_cli import find_aws_cli, make_aws_cli_env, get_aws_cli_version, get
 log = get_logger(__application_name__)
 
 decoding = "utf-8"
+
+max_keys_to_list = 20  # cap on the S3 keys named in one diagnostic message
 
 
 # sundry candidate
@@ -48,6 +51,151 @@ def get_bucket_size(s3_client, bucket_name: str) -> Tuple[int, int]:
             total_size += s3_object["Size"]
             object_count += 1
     return total_size, object_count
+
+
+def is_folder_marker(s3_object: dict) -> bool:
+    """
+    True for a zero-byte object whose key ends in "/" (e.g. from the S3 console's "Create folder"). "aws s3 sync" never downloads
+    these (it only creates the local directory), so they are in the S3 object count but can never be in the local file count.
+    """
+    return s3_object["Size"] == 0 and s3_object["Key"].endswith("/")
+
+
+def get_local_keys(dir_path: Path) -> set:
+    """
+    The S3-key-style relative paths ("/" separated) of every file under dir_path - what "aws s3 sync" matches S3 keys against.
+    """
+    local_keys = set()
+    for root, _unused_dir_names, file_names in os.walk(dir_path):
+        for file_name in file_names:
+            local_keys.add(os.path.relpath(os.path.join(root, file_name), dir_path).replace(os.sep, "/"))
+    return local_keys
+
+
+def find_s3_objects_without_local_file(s3_client, bucket_name: str, destination: Path) -> Tuple[List[str], List[str]]:
+    """
+    Explain why the S3 object count exceeds the local file count: which objects are folder markers (never downloaded - expected),
+    and which objects have no local file at exactly the key's path (unexpected).
+    :return: (folder_marker_keys, missing_keys)
+    """
+    local_keys = get_local_keys(destination)
+    folder_marker_keys = []
+    missing_keys = []
+    paginator = s3_client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket_name):
+        for s3_object in page.get("Contents", []):
+            key = s3_object["Key"]
+            if is_folder_marker(s3_object):
+                folder_marker_keys.append(key)
+            elif key not in local_keys:
+                missing_keys.append(key)
+    return folder_marker_keys, missing_keys
+
+
+class LocalNameMismatch(NamedTuple):
+    """
+    A local file or directory whose name differs from the corresponding component of an S3 key in a way "aws s3 sync" does not match.
+    """
+
+    directory: Path  # the directory holding the entry
+    local_name: str
+    key_name: str
+    difference: str  # how the two names differ
+
+    def __str__(self):
+        return f'local name "{self.local_name}" differs from S3 key "{self.key_name}" {self.difference}'
+
+
+def find_local_name_mismatches(destination: Path, key: str) -> List[LocalNameMismatch]:
+    """
+    Why "aws s3 sync" would not consider the local copy of an S3 object to be the same file. Sync matches the S3 key against the
+    local relative path as an exact string, but Windows opens files case-insensitively and silently strips trailing spaces and dots,
+    so a download can land in an existing file or directory under a different name - and be downloaded again on every run.
+    :return: one entry per near-miss along the key's path, outermost first (empty if the local path matches the key exactly, or if
+             nothing similarly named exists locally - e.g. a dry run, where nothing has been downloaded yet)
+    """
+    mismatches = []
+    current_dir = destination
+    for component in key.split("/"):
+        entries = os.listdir(current_dir)
+        if component in entries:
+            current_dir = Path(current_dir, component)
+            continue
+        matched_entry = None
+        for entry in entries:
+            if entry.lower() == component.lower():
+                difference = "only in case"
+            elif unicodedata.normalize("NFC", entry) == unicodedata.normalize("NFC", component):
+                difference = "only in Unicode normalization"
+            elif entry == component.rstrip(" ."):
+                difference = "only by the trailing space or dot, which Windows strips from file names"
+            else:
+                continue
+            matched_entry = entry
+            mismatches.append(LocalNameMismatch(current_dir, entry, component, difference))
+            break
+        if matched_entry is None:
+            break
+        current_dir = Path(current_dir, matched_entry)
+    return mismatches
+
+
+def rename_local_to_match_key(destination: Path, key: str) -> Tuple[List[str], Optional[str]]:
+    """
+    Rename the local file and/or directories of an S3 object so the local path is exactly the key, outermost first - renaming a
+    directory moves everything under it, so the path is re-checked after each rename.
+    :return: (one message per rename done, why the path still doesn't match - or None if it now does)
+    """
+    renames = []
+    while True:
+        mismatches = find_local_name_mismatches(destination, key)
+        if not mismatches:
+            return renames, None
+        mismatch = mismatches[0]
+        old_path = Path(mismatch.directory, mismatch.local_name)
+        try:
+            os.rename(old_path, Path(mismatch.directory, mismatch.key_name))
+        except OSError as e:
+            return renames, f'could not rename "{old_path}" to "{mismatch.key_name}" : {e}'
+        if mismatch.key_name not in os.listdir(mismatch.directory):
+            # e.g. Windows silently stripped the key's trailing space or dot, so the name on disk can't be made to match
+            return renames, f'the file system will not store the name "{mismatch.key_name}" (renaming "{old_path}" to it had no effect)'
+        renames.append(f'renamed "{old_path}" to "{mismatch.key_name}"')
+
+
+def get_synced_keys(sync_stdout: str, bucket_name: str, destination: Path) -> List[str]:
+    """
+    The S3 keys "aws s3 sync" downloaded (or would download, for a dry run), from its stdout. Each line is
+    "download: s3://<bucket>/<key> to <destination><sep><key with OS separators>"; since a key may itself contain " to ",
+    the key is the prefix whose local path reconstructs the rest of the line.
+    """
+    synced_keys = []
+    s3_prefix = f"s3://{bucket_name}/"
+    local_prefix = f"{destination}{os.sep}"
+    for line in sync_stdout.splitlines():
+        line = line.strip()
+        if line.startswith("(dryrun) "):
+            line = line[len("(dryrun) ") :]
+        if not line.startswith("download: "):
+            continue
+        line = line[len("download: ") :]
+        if not line.startswith(s3_prefix):
+            log.warning(f'unexpected "aws s3 sync" output for {bucket_name} : "{line}"')
+            continue
+        line = line[len(s3_prefix) :]
+        key = None
+        separator_index = line.find(" to ")
+        while separator_index >= 0:
+            candidate_key = line[:separator_index]
+            if line[separator_index + len(" to ") :] == local_prefix + candidate_key.replace("/", os.sep):
+                key = candidate_key
+                break
+            separator_index = line.find(" to ", separator_index + 1)
+        if key is None:
+            log.warning(f'could not determine the S3 key from "aws s3 sync" output for {bucket_name} : "{line}"')
+            continue
+        synced_keys.append(key)
+    return synced_keys
 
 
 def count_synced_files(sync_stdout: str) -> int:
@@ -100,6 +248,52 @@ class S3Backup(BupBase):
                     stdout, stderr = process.communicate()
                     break
         return process.returncode, stdout.decode(decoding, errors="replace"), stderr.decode(decoding, errors="replace")
+
+    def explain_missing_local_files(self, s3_client, bucket_name: str, destination: Path, count_difference: int):
+        """
+        Say why the S3 object count exceeds the local file count: folder markers are expected (application log only), objects with no
+        exactly-named local file are not (a warning in the backup output, with the reason when a near-match is found on disk).
+        """
+        try:
+            folder_marker_keys, missing_keys = find_s3_objects_without_local_file(s3_client, bucket_name, destination)
+        except (ClientError, BotoCoreError) as e:
+            self.error_out(f"could not list contents of {bucket_name} to explain the file count difference : {e}")
+            return
+        if folder_marker_keys:
+            listed = ", ".join(folder_marker_keys[:max_keys_to_list]) + (" ..." if len(folder_marker_keys) > max_keys_to_list else "")
+            log.info(
+                f'{bucket_name} : {len(folder_marker_keys)} of the {count_difference} S3 objects without a local file are zero-byte folder markers, which "aws s3 sync" never downloads : {listed}'
+            )
+        for missing_key in missing_keys[:max_keys_to_list]:
+            try:
+                reasons = [str(mismatch) for mismatch in find_local_name_mismatches(destination, missing_key)]
+            except OSError as e:
+                reasons = [f"could not check for a similarly named local file : {e}"]
+            if not reasons:
+                reasons = ["no similarly named local file found (a key with characters Windows cannot store, or the file was removed after the sync)"]
+            self.warning_out(f'{bucket_name} : S3 object "{missing_key}" has no local file at exactly that path : {"; ".join(reasons)}')
+        if len(missing_keys) > max_keys_to_list:
+            self.warning_out(f"{bucket_name} : {len(missing_keys) - max_keys_to_list} more S3 objects have no local file at exactly their path")
+
+    def fix_local_name(self, bucket_name: str, destination: Path, key: str, dry_run: bool):
+        """
+        After "aws s3 sync" downloaded an object, make the local path exactly the key. Sync matches keys to local paths as exact strings,
+        so a local copy whose name differs (e.g. only in case, on Windows) is downloaded again on every run; the download just made is
+        the current version, so renaming it to the key's name is all that's needed for the next sync to find it already backed up.
+        """
+        try:
+            if dry_run:
+                for mismatch in find_local_name_mismatches(destination, key):
+                    self.warning_out(f'{bucket_name} : "{key}" is downloaded on every run : {mismatch} (a backup run renames the local copy to match the S3 key)')
+                return
+            renames, failure = rename_local_to_match_key(destination, key)
+        except OSError as e:
+            self.warning_out(f'{bucket_name} : could not check the local name of "{key}" against its S3 key : {e}')
+            return
+        for rename in renames:
+            self.info_out(f'{bucket_name} : {rename} to match the S3 key "{key}" so the next sync finds it already backed up')
+        if failure is not None:
+            self.warning_out(f'{bucket_name} : "{key}" will be downloaded on every run until the local name matches the S3 key exactly : {failure}')
 
     def run_backup(self):
 
@@ -188,6 +382,10 @@ class S3Backup(BupBase):
             synced_count = count_synced_files(sync_stdout)
             total_synced_count += synced_count
 
+            # a file that sync downloads on every run is one whose local name doesn't match its S3 key exactly - fix the local name
+            for synced_key in get_synced_keys(sync_stdout, bucket_name, destination):
+                self.fix_local_name(bucket_name, destination, synced_key, dry_run)
+
             # check the results (skip during dry run - nothing was synced)
             if dry_run:
                 dry_run_count += 1
@@ -207,6 +405,8 @@ class S3Backup(BupBase):
             output_routines[level](
                 f"{bucket_name} : {message} (synced={synced_count}, s3_count={s3_object_count}, local_count={local_count}; s3_total_size={s3_total_size}, local_size={local_size})"
             )
+            if local_count < s3_object_count:
+                self.explain_missing_local_files(s3_access.client, bucket_name, destination, s3_object_count - local_count)
 
         if dry_run:
             self.info_out(f"{len(buckets)} buckets, {dry_run_count} dry run, {total_synced_count} files would be synced, {len(exclusions_no_comments)} excluded")
