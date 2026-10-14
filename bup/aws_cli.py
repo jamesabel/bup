@@ -108,17 +108,21 @@ def parse_version(version: str) -> Optional[Tuple[int, ...]]:
 
 def check_aws_cli_version(installed_version: Optional[str], latest_version: Optional[str]) -> Tuple[str, str]:
     """
-    Check that the installed AWS CLI is the latest available.
+    Check the installed AWS CLI against the latest available. Only a likely compatibility problem is a warning: the installed version
+    can't be determined (the CLI may be broken), or it is a whole major version behind (where breaking changes land). Being a minor or
+    patch release behind is routine (awscli publishes almost daily) and is just informational, as is not being able to reach PyPI.
     :return: (level, message) where level is "warning" or "info"
     """
     if installed_version is None:
         return "warning", "could not determine the installed AWS CLI version"
     if latest_version is None:
-        return "warning", f"could not determine the latest AWS CLI version (installed: {installed_version})"
+        return "info", f"could not determine the latest AWS CLI version (installed: {installed_version})"
     installed = parse_version(installed_version)
     latest = parse_version(latest_version)
     if installed is None or latest is None:
         return "warning", f"could not compare AWS CLI versions (installed: {installed_version}, latest: {latest_version})"
+    if installed[0] < latest[0]:
+        return "warning", f'AWS CLI {installed_version} is a major version behind the latest ({latest_version}) - upgrade with "pip install --upgrade awscli"'
     if installed < latest:
-        return "warning", f'AWS CLI {installed_version} is not the latest ({latest_version}) - upgrade with "pip install --upgrade awscli"'
+        return "info", f'AWS CLI {installed_version} is not the latest ({latest_version}) - upgrade with "pip install --upgrade awscli"'
     return "info", f"AWS CLI {installed_version} is up to date (latest: {latest_version})"

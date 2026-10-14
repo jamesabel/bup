@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -7,7 +8,7 @@ import pytest
 from botocore.exceptions import ClientError, NoCredentialsError
 from moto.server import ThreadedMotoServer
 
-from bup import UITypes
+from bup import UITypes, __application_name__
 from bup.s3_backup import S3Backup, compare_backup_sizes, count_synced_files, get_bucket_size, get_dir_size
 
 fake_aws_cli = (Path("aws"), Path("python"))
@@ -218,11 +219,12 @@ def test_failed_sync_surfaces_error_and_skips_verification(mock_get_prefs, mock_
     assert any("0 backed up" in i for i in infos)
 
 
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
 @patch("bup.s3_backup.find_aws_cli", return_value=fake_aws_cli)
 @patch("bup.s3_backup.ExclusionPreferences")
 @patch("bup.s3_backup.S3Access")
 @patch("bup.s3_backup.get_preferences")
-def test_outdated_aws_cli_surfaces_warning(mock_get_prefs, mock_s3_access, mock_exclusions, mock_find_aws_cli, tmp_path):
+def test_major_version_behind_aws_cli_surfaces_warning(mock_get_prefs, mock_s3_access, mock_exclusions, mock_find_aws_cli, tmp_path):
     mock_get_prefs.return_value = _make_preferences(tmp_path, dry_run=True)
     mock_s3_access.return_value.bucket_list.return_value = []
     mock_exclusions.return_value.get_no_comments.return_value = []
@@ -231,11 +233,37 @@ def test_outdated_aws_cli_surfaces_warning(mock_get_prefs, mock_s3_access, mock_
 
     with (
         patch("bup.s3_backup.get_aws_cli_version", return_value="1.0.0"),
-        patch("bup.s3_backup.get_latest_awscli_version", return_value="1.1.0"),
+        patch("bup.s3_backup.get_latest_awscli_version", return_value="2.0.0"),
     ):
         backup.run()
 
-    assert any("not the latest" in w for w in warnings)
+    assert any("major version behind" in w for w in warnings)
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+@patch("bup.s3_backup.find_aws_cli", return_value=fake_aws_cli)
+@patch("bup.s3_backup.ExclusionPreferences")
+@patch("bup.s3_backup.S3Access")
+@patch("bup.s3_backup.get_preferences")
+def test_minor_version_behind_aws_cli_only_goes_to_the_log(mock_get_prefs, mock_s3_access, mock_exclusions, mock_find_aws_cli, tmp_path, caplog):
+    # a minor/patch release behind is not shown in the backup output (no warning, no info) - it only goes to the application log
+    mock_get_prefs.return_value = _make_preferences(tmp_path, dry_run=True)
+    mock_s3_access.return_value.bucket_list.return_value = []
+    mock_exclusions.return_value.get_no_comments.return_value = []
+    warnings = []
+    infos = []
+    backup = _make_backup(info=infos.append, warning=warnings.append)
+
+    with (
+        patch("bup.s3_backup.get_aws_cli_version", return_value="1.0.0"),
+        patch("bup.s3_backup.get_latest_awscli_version", return_value="1.1.0"),
+        caplog.at_level(logging.INFO, logger=__application_name__),
+    ):
+        backup.run()
+
+    assert not any("AWS CLI" in w for w in warnings)
+    assert not any("AWS CLI" in i for i in infos)
+    assert any("not the latest" in record.getMessage() for record in caplog.records)
 
 
 @patch("bup.s3_backup.get_bucket_size")

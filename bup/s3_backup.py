@@ -125,9 +125,10 @@ class S3Backup(BupBase):
 
         env_var = make_aws_cli_env(python_path)
 
-        # check that the AWS CLI doing the backups is the latest available (warn but proceed - an outdated CLI can still back up)
+        # check the AWS CLI doing the backups: a likely compatibility problem is a warning in the backup output, anything else (e.g. a patch
+        # release behind) only goes to the application log. Either way proceed - an outdated CLI can still back up.
         aws_cli_version_level, aws_cli_version_message = check_aws_cli_version(get_aws_cli_version(aws_cli_path, env_var), get_latest_awscli_version())
-        {"warning": self.warning_out, "info": self.info_out}[aws_cli_version_level](aws_cli_version_message)
+        {"warning": self.warning_out, "info": log.info}[aws_cli_version_level](aws_cli_version_message)
 
         try:
             buckets = s3_access.bucket_list()

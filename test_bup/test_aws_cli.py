@@ -63,12 +63,29 @@ def test_check_aws_cli_version_newer_than_latest_is_info():
     assert level == "info"
 
 
-def test_check_aws_cli_version_outdated():
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_check_aws_cli_version_outdated_is_info():
+    # a minor/patch release behind is routine (awscli publishes almost daily), not a compatibility problem
     level, message = check_aws_cli_version("1.42.34", "1.42.35")
-    assert level == "warning"
+    assert level == "info"
     assert "not the latest" in message
     assert "1.42.34" in message
     assert "1.42.35" in message
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_check_aws_cli_version_minor_behind_is_info():
+    level, _unused_message = check_aws_cli_version("1.41.0", "1.42.35")
+    assert level == "info"
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_check_aws_cli_version_major_behind_is_warning():
+    level, message = check_aws_cli_version("1.42.35", "2.0.0")
+    assert level == "warning"
+    assert "major version behind" in message
+    assert "1.42.35" in message
+    assert "2.0.0" in message
 
 
 def test_check_aws_cli_version_installed_unknown():
@@ -77,10 +94,13 @@ def test_check_aws_cli_version_installed_unknown():
     assert "installed" in message
 
 
-def test_check_aws_cli_version_latest_unknown():
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_check_aws_cli_version_latest_unknown_is_info():
+    # not being able to reach PyPI is not a backup problem
     level, message = check_aws_cli_version("1.42.35", None)
-    assert level == "warning"
+    assert level == "info"
     assert "latest" in message
+    assert "1.42.35" in message
 
 
 def test_check_aws_cli_version_unparseable():
