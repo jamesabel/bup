@@ -73,6 +73,26 @@ in the result lines, and bup explains both - and fixes the second:
 my-bucket : renamed "D:\b\s3\my-bucket\static\Vendor" to "vendor" to match the S3 key "static/vendor/select2.js" so the next sync finds it already backed up
 ```
 
+### How S3 key case is handled
+
+S3 keys are case-sensitive: `Photos/IMG_1.jpg` and `photos/img_1.jpg` are two different objects. bup never changes
+or folds the case of a key - the local path of every object is made to match its key exactly, character for
+character, on every platform.
+
+- **Case-sensitive file systems** (Linux, and macOS or Windows volumes formatted case-sensitive): the local path is
+  always the key as-is, so case needs no special handling and keys that differ only in case are stored as separate
+  files.
+- **Case-insensitive file systems** (the Windows default, and macOS by default): a download can land in an existing
+  file or directory whose name differs from the key only in case, e.g. a key `static/vendor/select2.js` landing
+  under an existing `static\Vendor` directory. `aws s3 sync` compares names as exact strings, so it would never
+  see a match and would download that object again on every run. After each sync, bup compares the local name of
+  every downloaded file to its key, component by component, and renames any that differ only in case (or only in
+  Unicode normalization, or by a trailing space or dot) to the key's exact spelling, reporting each rename as
+  info. A dry run reports the mismatch as a warning instead of renaming.
+- **Keys that differ only in case** (`Readme.md` and `readme.md` in the same prefix) cannot both exist on a
+  case-insensitive file system: they share one local file, so bup reports a case mismatch and re-downloads them on
+  every run. Back up such a bucket to a case-sensitive file system to keep both objects.
+
 # Security Notes
 
 - Credentials you enter (AWS secret access key, GitHub token) are stored **unencrypted** in a local
