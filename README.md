@@ -176,7 +176,8 @@ character, on every platform.
 
 AWS charges for data sent out to the internet, which is what a backup is. bup reports what each backup received and
 approximately what AWS charges for it. In the GUI this is in the "Transfer" tab (and the application log), with one row
-per S3 bucket, DynamoDB table or GitHub repo that received anything and a total per backup type. The CLI prints the
+per S3 bucket, DynamoDB table or GitHub repo that received anything (sorted by cost, highest at the top) and a total
+per backup type. The CLI prints the
 same lines in its regular output.
 
 - **S3:** the total size of the files `aws s3 sync` downloaded, priced as data transfer out.

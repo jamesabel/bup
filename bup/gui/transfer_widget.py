@@ -1,6 +1,6 @@
 import sqlite3
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
 from balsa import get_logger
@@ -42,10 +42,20 @@ def get_prices_text() -> str:
     )
 
 
+def get_cost_rank(transfer_record: TransferRecord) -> Tuple[bool, float, int]:
+    """
+    Where a transfer belongs in the table, which is sorted by cost: a higher rank is closer to the top. Transfers without a cost
+    (GitHub, or AWS prices not known) rank below every transfer with one, and equal costs rank by the size received.
+    """
+    has_cost = transfer_record.cost is not None
+    return has_cost, transfer_record.cost if has_cost else 0.0, transfer_record.received_bytes
+
+
 class TransferWidget(QWidget):
     """
     "Transfer" tab - what each backup received over the network and approximately what AWS charges for it, one row per S3 bucket,
-    DynamoDB table or GitHub repo that received anything, with totals per backup type since bup was started (or the tab was cleared).
+    DynamoDB table or GitHub repo that received anything (highest cost at the top), with totals per backup type since bup was started
+    (or the tab was cleared).
     """
 
     def __init__(self):
@@ -73,7 +83,8 @@ class TransferWidget(QWidget):
             self.totals_widget.layout().addWidget(self.total_labels[backup_type])
         self.layout().addWidget(self.totals_widget)
 
-        # one row per transfer, most recent first
+        # one row per transfer, highest cost first
+        self.row_records: List[TransferRecord] = []  # the transfer record of each table row, in row order
         self.controls_widget = QWidget()
         self.controls_widget.setLayout(QHBoxLayout())
         self.clear_button = QPushButton("Clear")
@@ -104,11 +115,18 @@ class TransferWidget(QWidget):
             f"{transfer_record.read_units:g}" if transfer_record.read_units > 0.0 else "",
             format_cost(transfer_record.cost) if transfer_record.cost is not None else "",
         ]
-        self.table.insertRow(0)
+        # keep the rows sorted by cost, highest at the top: the new row goes above the first row that doesn't rank higher than it
+        # (so of two equal rows the more recent is on top)
+        new_row_rank = get_cost_rank(transfer_record)
+        row = next((row for row, row_record in enumerate(self.row_records) if get_cost_rank(row_record) <= new_row_rank), len(self.row_records))
+        self.row_records.insert(row, transfer_record)
+        self.table.insertRow(row)
         for column, text in enumerate(row_text):
-            self.table.setItem(0, column, QTableWidgetItem(text))
+            self.table.setItem(row, column, QTableWidgetItem(text))
         if self.table.rowCount() > max_transfer_rows:
-            self.table.removeRow(self.table.rowCount() - 1)  # FIFO - the totals still include the removed row
+            # drop the bottom (lowest cost) row - the totals still include it
+            self.row_records.pop()
+            self.table.removeRow(self.table.rowCount() - 1)
         self.update_totals()
         self.update_prices()  # the backup that reported this may have just fetched prices
 
@@ -123,5 +141,6 @@ class TransferWidget(QWidget):
     def clear(self):
         for backup_type in BackupTypes:
             self.transfer_records[backup_type] = []
+        self.row_records = []
         self.table.setRowCount(0)
         self.update_totals()

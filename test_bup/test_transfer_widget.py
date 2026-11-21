@@ -76,22 +76,74 @@ def test_unreadable_price_cache_is_reported_in_place_of_the_prices(qapp):
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
-def test_reported_transfer_is_shown_most_recent_first(transfer_widget):
-    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, "my-bucket", 2048, cost=0.5, region="eu-west-1"))
-    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.DynamoDB, "my_table", 1024, 12.5, 0.25, "us-west-2"))
+def test_reported_transfer_is_shown(transfer_widget):
     transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.github, "owner/repo", 4096))
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.DynamoDB, "my_table", 1024, 12.5, 0.25, "us-west-2"))
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, "my-bucket", 2048, cost=0.5, region="eu-west-1"))
 
     assert transfer_widget.table.rowCount() == 3
-    github_row = _row_text(transfer_widget, 0)
-    del github_row["Time"]
-    assert github_row == {"Backup": "github", "Name": "owner/repo", "Region": "", "Received": "4.0 KB", "Read units": "", "Approximate cost": ""}
-    dynamodb_row = _row_text(transfer_widget, 1)
-    del dynamodb_row["Time"]
-    assert dynamodb_row == {"Backup": "DynamoDB", "Name": "my_table", "Region": "us-west-2", "Received": "1.0 KB", "Read units": "12.5", "Approximate cost": "$0.2500"}
-    s3_row = _row_text(transfer_widget, 2)
+    s3_row = _row_text(transfer_widget, 0)
     assert s3_row["Time"] != ""
     del s3_row["Time"]
     assert s3_row == {"Backup": "S3", "Name": "my-bucket", "Region": "eu-west-1", "Received": "2.0 KB", "Read units": "", "Approximate cost": "$0.5000"}
+    dynamodb_row = _row_text(transfer_widget, 1)
+    del dynamodb_row["Time"]
+    assert dynamodb_row == {"Backup": "DynamoDB", "Name": "my_table", "Region": "us-west-2", "Received": "1.0 KB", "Read units": "12.5", "Approximate cost": "$0.2500"}
+    github_row = _row_text(transfer_widget, 2)
+    del github_row["Time"]
+    assert github_row == {"Backup": "github", "Name": "owner/repo", "Region": "", "Received": "4.0 KB", "Read units": "", "Approximate cost": ""}
+
+
+def _names(transfer_widget: TransferWidget) -> list:
+    return [_row_text(transfer_widget, row)["Name"] for row in range(transfer_widget.table.rowCount())]
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_rows_are_sorted_by_cost_highest_at_the_top(transfer_widget):
+    # reported in neither cost order nor reverse cost order
+    for name, cost in (("middle", 0.25), ("lowest", 0.001), ("highest", 12.5), ("second", 3.0), ("free", 0.0)):
+        transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, name, 1024, cost=cost))
+
+    assert _names(transfer_widget) == ["highest", "second", "middle", "lowest", "free"]
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_rows_are_sorted_by_cost_not_by_how_the_cost_is_written(transfer_widget):
+    # as text "$9.00" sorts above "$10.00"
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, "nine", 1024, cost=9.0))
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, "ten", 1024, cost=10.0))
+
+    assert _names(transfer_widget) == ["ten", "nine"]
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_rows_without_a_cost_are_below_those_with_one_by_size(transfer_widget):
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.github, "small-repo", 1024))
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, "free-bucket", 512, cost=0.0))
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.github, "big-repo", 4096))
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, "prices-unknown-bucket", 2048, cost=None))
+
+    assert _names(transfer_widget) == ["free-bucket", "big-repo", "prices-unknown-bucket", "small-repo"]
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_rows_of_equal_cost_are_by_size_then_most_recent_first(transfer_widget):
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, "first", 1024, cost=0.5))
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, "bigger", 2048, cost=0.5))
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, "second", 1024, cost=0.5))
+
+    assert _names(transfer_widget) == ["bigger", "second", "first"]
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_rows_stay_sorted_after_clear(transfer_widget):
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, "before-clear", 1024, cost=100.0))
+    transfer_widget.clear_button.click()
+
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, "low", 1024, cost=0.25))
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, "high", 1024, cost=0.5))
+
+    assert _names(transfer_widget) == ["high", "low"]
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
@@ -139,11 +191,10 @@ def test_totals_per_backup_type(transfer_widget):
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
 def test_rows_are_capped_but_totals_are_not(transfer_widget):
     with patch("bup.gui.transfer_widget.max_transfer_rows", 2):
-        for bucket_number in range(3):
-            transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, f"bucket-{bucket_number}", 1024, cost=0.25))
+        for name, cost in (("lowest", 0.25), ("highest", 1.0), ("middle", 0.5)):
+            transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, name, 1024, cost=cost))
 
-    assert transfer_widget.table.rowCount() == 2
-    assert _row_text(transfer_widget, 0)["Name"] == "bucket-2"  # the oldest row was dropped
+    assert _names(transfer_widget) == ["highest", "middle"]  # the lowest cost row was dropped
     assert transfer_widget.total_labels[BackupTypes.S3].text().startswith("S3 transfer total : received 3.0 KB")
 
 
