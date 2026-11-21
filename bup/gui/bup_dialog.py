@@ -7,7 +7,7 @@ from PyQt5.QtGui import QCloseEvent, QIcon
 from PyQt5.QtCore import QTimer, Qt
 
 from bup import __application_name__, __version__, __author__, get_preferences, UITypes
-from bup.gui import PreferencesWidget, RunBackupWidget, LogWidget, BupAbout, get_icon_path
+from bup.gui import PreferencesWidget, RunBackupWidget, LogWidget, TransferWidget, BupAbout, get_icon_path
 
 
 class BupDialog(QDialog):
@@ -33,11 +33,13 @@ class BupDialog(QDialog):
         self.run_backup_widget = RunBackupWidget()
         self.preferences_widget = PreferencesWidget()
         self.log_widget = LogWidget()
+        self.transfer_widget = TransferWidget()
         self.about_widget = BupAbout()
 
         self.tab_widget.addTab(self.run_backup_widget, "Backup")
         self.tab_widget.addTab(self.preferences_widget, "Preferences")
         self.tab_widget.addTab(self.log_widget, "Log")
+        self.tab_widget.addTab(self.transfer_widget, "Transfer")
         self.tab_widget.addTab(self.about_widget, "About")
 
         preferences = get_preferences(UITypes.gui)

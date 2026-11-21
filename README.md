@@ -117,6 +117,38 @@ character, on every platform.
   case-insensitive file system: they share one local file, so bup reports a case mismatch and re-downloads them on
   every run. Back up such a bucket to a case-sensitive file system to keep both objects.
 
+# Transfer and approximate AWS cost
+
+AWS charges for data sent out to the internet, which is what a backup is. bup reports what each backup received and
+approximately what AWS charges for it. In the GUI this is in the "Transfer" tab (and the application log), with one row
+per S3 bucket, DynamoDB table or GitHub repo that received anything and a total per backup type. The CLI prints the
+same lines in its regular output.
+
+- **S3:** the total size of the files `aws s3 sync` downloaded, priced as data transfer out.
+- **DynamoDB:** the size of the table scan responses, priced as data transfer out, plus the read units the scan
+  consumed, priced as on-demand reads. Tables are only scanned when they have changed or about once a day, so many
+  runs receive nothing.
+- **GitHub:** how much the local repository grew from a clone or fetch. GitHub does not charge for this, so it is
+  informational only (e.g. to notice a repo that suddenly transfers a lot).
+
+The costs are estimates:
+
+- bup gets the prices itself, so there is nothing to enter. AWS prices differ by region, so each S3 bucket is priced
+  at the rates of the region it is in and each DynamoDB table at the rates of the region it is read from. The prices
+  come from the public AWS Price List files at `pricing.us-east-1.amazonaws.com` (no AWS credentials or permissions
+  are needed), are cached in a local SQLite database (`aws_prices.db` in
+  bup's user cache directory), and are fetched again when they are more than a week old. The Transfer tab shows the
+  prices in use and when they were fetched.
+- If the prices can not be fetched (e.g. the price list is unreachable) the previously fetched prices are used. If
+  there are none yet, the transfer is reported without a cost.
+- Volume discounts are not applied (the price used is that of the first 10 TB a month).
+- AWS does not charge for the first 100 GB of data transfer out a month, shared by the whole AWS account. bup does
+  not know how much of that allowance is left, so the cost shown is before the allowance - the most the transfer could
+  cost, not necessarily what you are billed.
+- Request charges (e.g. S3 GET and LIST) are not included.
+- DynamoDB reads are priced as on-demand. A table with provisioned capacity has already paid for its reads.
+- A dry run reports nothing, since nothing is transferred.
+
 # Security Notes
 
 - Credentials you enter (AWS secret access key, GitHub token) are stored **unencrypted** in a local
