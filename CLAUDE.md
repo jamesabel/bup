@@ -8,7 +8,7 @@ bup is a cross-platform backup utility for AWS S3 buckets, AWS DynamoDB tables, 
 
 ## Common Commands
 
-All commands are Windows batch scripts in the `tools` directory. Each one changes to the project root itself, so it can be run from anywhere. The virtual environment uses Python 3.15 (`requires-python` stays at 3.13, the minimum CI tests).
+All commands are Windows batch scripts in the `tools` directory (except `bup.bat`, which runs the application and is in the project root). Each one changes to the project root itself, so it can be run from anywhere. The virtual environment uses Python 3.15 (`requires-python` stays at 3.13, the minimum CI tests).
 
 ```bash
 # Create virtual environment
