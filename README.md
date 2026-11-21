@@ -15,7 +15,7 @@
         <img src="https://img.shields.io/pypi/dm/bup" alt="downloads per month" />
     </a>
     <a href="https://github.com/jamesabel/bup/blob/main/LICENSE">
-        <img src="https://img.shields.io/github/license/jamesabel/bup" alt="license" />
+        <img src="https://img.shields.io/pypi/l/bup" alt="license" />
     </a>
     <a href="https://github.com/psf/black">
         <img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="code style: black" />
