@@ -81,6 +81,11 @@ class TransferWidget(QWidget):
         for backup_type in BackupTypes:
             self.total_labels[backup_type] = QLabel()
             self.totals_widget.layout().addWidget(self.total_labels[backup_type])
+        self.grand_total_label = QLabel()  # all the backup types together, in bold
+        grand_total_font = self.grand_total_label.font()
+        grand_total_font.setBold(True)
+        self.grand_total_label.setFont(grand_total_font)
+        self.totals_widget.layout().addWidget(self.grand_total_label)
         self.layout().addWidget(self.totals_widget)
 
         # one row per transfer, highest cost first
@@ -137,6 +142,8 @@ class TransferWidget(QWidget):
         for backup_type in BackupTypes:
             total = get_transfer_total(backup_type, self.transfer_records[backup_type])
             self.total_labels[backup_type].setText(f"{backup_type.name} {total}")
+        all_transfer_records = [transfer_record for backup_type in BackupTypes for transfer_record in self.transfer_records[backup_type]]
+        self.grand_total_label.setText(str(get_transfer_total(None, all_transfer_records, "Grand total")))
 
     def clear(self):
         for backup_type in BackupTypes:
