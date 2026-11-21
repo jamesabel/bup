@@ -1,3 +1,4 @@
+import platform
 from pathlib import Path
 
 from PyQt5.QtWidgets import QVBoxLayout, QWidget, QTextBrowser
@@ -41,6 +42,7 @@ class BupAbout(QWidget):
         if license_path is not None and license_path.exists() and license_path.is_file():
 
             about_text = f"### BUP ({__version__})\n\n"
+            about_text += f"Python version: {platform.python_version()}\n\n"  # the Python this application is running on
             about_text += f"AWS CLI version: {get_aws_cli_version_text()}\n\n"
             about_text += license_path.read_text()
             about_text += "\n---\n"
