@@ -24,7 +24,62 @@
 
 # bup
 
-backup for github repos and AWS S3 and DynamoDB
+bup backs up your cloud data to a local directory: every AWS S3 bucket, every AWS DynamoDB table and every GitHub
+repository your credentials can see. Point it at a backup directory, give it an AWS profile and a GitHub token, and it
+keeps a local copy up to date, either on demand or automatically every so many hours.
+
+It has a GUI for everyday use and a command line for scripts and scheduled jobs.
+
+- **S3:** each bucket is synced with `aws s3 sync`, so only new and changed objects are downloaded. Objects deleted
+  from S3 are kept locally. Each sync is checked against the bucket's contents.
+- **DynamoDB:** each table is saved in full, as both a pickle file and a JSON file.
+- **GitHub:** each repository is cloned, and every branch is kept an exact mirror of the remote.
+- **Exclusions:** skip particular buckets, tables or repos, with comments to say why.
+- **Transfer and cost:** see how much each backup downloaded and approximately what AWS charges for it.
+- **Logs:** warnings and errors are shown per backup type, with a detailed log of everything bup did.
+
+## Screen captures
+
+These show made-up example data.
+
+The Backup tab runs the backups and shows each backup type's exclusions, progress, warnings and errors:
+
+![Backup tab](https://raw.githubusercontent.com/jamesabel/bup/main/doc/screenshots/backup.png)
+
+The Transfer tab shows what each bucket, table and repo downloaded, and the approximate AWS cost:
+
+![Transfer tab](https://raw.githubusercontent.com/jamesabel/bup/main/doc/screenshots/transfer.png)
+
+The Preferences tab holds the backup directory, credentials and the automatic backup schedule:
+
+![Preferences tab](https://raw.githubusercontent.com/jamesabel/bup/main/doc/screenshots/preferences.png)
+
+## Install
+
+bup needs Python 3.13 or later, and `git` on the PATH for GitHub backups. The AWS CLI it uses is installed with it.
+
+```
+pip install bup
+```
+
+## Use
+
+Run `bup` with no arguments for the GUI. Set the backup directory and credentials in the Preferences tab, then press
+Start in the Backup tab (or enable the automatic backup).
+
+Give `bup` a backup directory and what to back up for the command line:
+
+```
+bup D:\backup -s                 # S3
+bup D:\backup -d                 # DynamoDB
+bup D:\backup -a -p my-profile   # S3 and DynamoDB, with an AWS profile
+bup D:\backup -g -t <token>      # GitHub (the token is saved for later runs)
+bup D:\backup -s --dry_run       # show what an S3 backup would do
+bup --help                       # all the options
+```
+
+The backup directory gets a directory per backup type: `s3/<bucket>/`, `dynamodb/<table>.pickle` and
+`dynamodb/<table>.json`, and `github/<owner>/<repo>/`.
 
 # Exclusions
 
