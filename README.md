@@ -135,8 +135,8 @@ The costs are estimates:
 
 - bup gets the prices itself, so there is nothing to enter. AWS prices differ by region, so each S3 bucket is priced
   at the rates of the region it is in and each DynamoDB table at the rates of the region it is read from. The prices
-  come from the public [AWS Price List](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/price-changes.html)
-  files (no AWS credentials or permissions are needed), are cached in a local SQLite database (`aws_prices.db` in
+  come from the public AWS Price List files at `pricing.us-east-1.amazonaws.com` (no AWS credentials or permissions
+  are needed), are cached in a local SQLite database (`aws_prices.db` in
   bup's user cache directory), and are fetched again when they are more than a week old. The Transfer tab shows the
   prices in use and when they were fetched.
 - If the prices can not be fetched (e.g. the price list is unreachable) the previously fetched prices are used. If
