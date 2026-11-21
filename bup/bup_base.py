@@ -1,5 +1,5 @@
 import threading
-from typing import Callable
+from typing import Callable, List
 
 from PyQt5.QtCore import QThread, pyqtSignal
 from typeguard import typechecked
@@ -7,6 +7,7 @@ from typeguard import typechecked
 from balsa import get_logger
 
 from bup import __application_name__, UITypes
+from bup.transfer import TransferRecord, get_transfer_total, transfer_emitter
 
 log = get_logger(__application_name__)
 
@@ -23,6 +24,7 @@ class BupBase(QThread):
         super().__init__()
         self._stop_requested = False
         self.error_count = 0
+        self.transfer_records: List[TransferRecord] = []
         self.ui_type = ui_type
         self.caller_info_out = info_out
         self.caller_warning_out = warning_out
@@ -35,6 +37,7 @@ class BupBase(QThread):
         # a prior run may have been stopped or had errors - a new start is a fresh run
         self._stop_requested = False
         self.error_count = 0
+        self.transfer_records = []
         super().start(*args, **kwargs)
 
     def run(self):
@@ -97,3 +100,25 @@ class BupBase(QThread):
         self.error_count += 1
         log.error(s, extra=self._log_extra())
         self.caller_error_out(s)
+
+    def transfer_out(self, transfer_record: TransferRecord):
+        """
+        Report what one backed up item received over the network (and approximately what it cost).
+        """
+        self.transfer_records.append(transfer_record)
+        self._transfer_text_out(str(transfer_record))
+        transfer_emitter.transfer_signal.emit(transfer_record)
+
+    def transfer_summary_out(self):
+        """
+        Report the total of everything this run has reported with transfer_out().
+        """
+        self._transfer_text_out(str(get_transfer_total(self.backup_type, self.transfer_records)))
+
+    def _transfer_text_out(self, s: str):
+        if self.ui_type == UITypes.cli:
+            # the CLI has no Transfer tab, so the transfer report is part of its regular output
+            self._info_out(s)
+        else:
+            # the GUI shows transfers in the Transfer tab - only log them, to keep them out of the backup's own output
+            log.info(s, extra=self._log_extra())

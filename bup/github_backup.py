@@ -10,6 +10,7 @@ from balsa import get_logger
 from typeguard import typechecked
 
 from bup import __application_name__, BupBase, BackupTypes, get_preferences, ExclusionPreferences, rmdir
+from bup.transfer import TransferRecord
 
 log = get_logger(__application_name__)
 
@@ -29,6 +30,22 @@ def get_git_credential_environment(token: Optional[str]) -> dict:
     return env
 
 
+def parse_count_objects(count_objects_output: str) -> Optional[int]:
+    """
+    Size (bytes) of a git repository's object store, from the output of "git count-objects -v" (which reports loose objects as "size"
+    and packed objects as "size-pack", both in KiB).
+    :return: the size, or None if the output doesn't have both sizes
+    """
+    sizes = {}
+    for line in count_objects_output.splitlines():
+        key, separator, value = line.partition(":")
+        if separator and value.strip().isdigit():
+            sizes[key.strip()] = int(value)
+    if "size" not in sizes or "size-pack" not in sizes:
+        return None
+    return (sizes["size"] + sizes["size-pack"]) * 1024
+
+
 class GithubBackup(BupBase):
 
     backup_type = BackupTypes.github
@@ -43,6 +60,27 @@ class GithubBackup(BupBase):
         if self._github_token:
             s = s.replace(self._github_token, "***")
         return s
+
+    def get_repo_size(self, git_repo) -> Optional[int]:
+        """
+        Size (bytes) of a local repository's object store, or None if it can't be determined.
+        """
+        from git.exc import GitCommandError
+
+        try:
+            return parse_count_objects(git_repo.git.count_objects("-v"))
+        except GitCommandError as e:
+            # the size is only used to report how much a clone or fetch received - not knowing it doesn't affect the backup
+            log.warning(self.redact(f"could not get the repository size : {e}"))
+            return None
+
+    def report_received(self, repo_name: str, size_before: Optional[int], size_after: Optional[int]):
+        """
+        Report what a clone or fetch received, as the growth of the local object store. This is approximate (git stores what it
+        receives compressed, and may repack after a fetch), and GitHub does not charge for it - it is informational.
+        """
+        if size_before is not None and size_after is not None and size_after > size_before:
+            self.transfer_out(TransferRecord(BackupTypes.github, repo_name, size_after - size_before))
 
     def run_backup(self):
         if shutil.which("git") is None:
@@ -109,7 +147,9 @@ class GithubBackup(BupBase):
                             self.error_out(f'could not remove "{repo_dir}" - may require manual removal')
                         else:
                             self.info_out(f'git clone "{repo_owner_and_name}"')
-                            Repo.clone_from(clone_url, repo_dir, env=self._git_env)
+                            cloned_repo = Repo.clone_from(clone_url, repo_dir, env=self._git_env)
+                            self.report_received(repo_owner_and_name, 0, self.get_repo_size(cloned_repo))
+                            cloned_repo.close()
                             time.sleep(1.0)  # let Windows release file locks on the fresh clone before touching it
                             self.pull_branches(repo_owner_and_name, branches, repo_dir, clone_url=clone_url)
                             clone_count += 1
@@ -120,6 +160,8 @@ class GithubBackup(BupBase):
                         self.error_out(self.redact(f'{repo_owner_and_name},"{repo_dir}",{e},"{__file__}"'))
 
         self.info_out(f"{len(repositories)} repos, {pull_count} pulls, {clone_count} clones, {len(exclusions)} excluded")
+        if not dry_run:
+            self.transfer_summary_out()
 
     @typechecked()
     def pull_branches(self, repo_name: str, branches: list, repo_dir: Path, clone_url: Optional[str] = None) -> bool:
@@ -152,12 +194,14 @@ class GithubBackup(BupBase):
             # One fetch per repo transfers every branch's objects in a single negotiation; --prune drops
             # remote-tracking refs for branches deleted on GitHub so the local ref set stays honest.
             self.info_out(f'git fetch "{repo_name}"')
+            size_before_fetch = self.get_repo_size(git_repo)
             try:
                 git_repo.git.fetch("--prune", "origin")
             except GitCommandError as e:
                 # recoverable - the caller falls back to a fresh clone, and escalates to an error if that also fails
                 self.warning_out(self.redact(f"{repo_name} : {e}"))
                 return False
+            self.report_received(repo_name, size_before_fetch, self.get_repo_size(git_repo))
 
             for branch in branches:
                 if self.stop_requested:

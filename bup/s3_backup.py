@@ -13,6 +13,7 @@ logging.getLogger("boto3").setLevel(logging.WARNING)
 logging.getLogger("botocore").setLevel(logging.WARNING)
 
 from bup import __application_name__, BupBase, BackupTypes, get_preferences, ExclusionPreferences
+from bup.transfer import TransferRecord, get_price, get_transfer_out_cost, default_aws_transfer_out_price_per_gb
 from bup.aws_cli import find_aws_cli, make_aws_cli_env, get_aws_cli_version, get_latest_awscli_version, check_aws_cli_version, subprocess_creation_flags
 
 log = get_logger(__application_name__)
@@ -198,6 +199,21 @@ def get_synced_keys(sync_stdout: str, bucket_name: str, destination: Path) -> Li
     return synced_keys
 
 
+def get_synced_size(destination: Path, synced_keys: List[str]) -> int:
+    """
+    Total size (bytes) of the local files "aws s3 sync" just downloaded - what the sync received from S3.
+    """
+    synced_size = 0
+    for synced_key in synced_keys:
+        file_path = Path(destination, synced_key)
+        try:
+            synced_size += os.path.getsize(file_path)
+        except OSError as e:
+            # e.g. a key Windows can't store under exactly that name - the total is then an undercount
+            log.warning(f'could not get size of downloaded file "{file_path}" : {e}')
+    return synced_size
+
+
 def count_synced_files(sync_stdout: str) -> int:
     """
     Number of files "aws s3 sync" transferred (or would transfer, for a dry run), from its stdout -
@@ -300,6 +316,7 @@ class S3Backup(BupBase):
         preferences = get_preferences(self.ui_type)
         dry_run = preferences.dry_run
         size_only = preferences.s3_size_only
+        transfer_out_price_per_gb = get_price(preferences.aws_transfer_out_price_per_gb, default_aws_transfer_out_price_per_gb)
 
         backup_directory = os.path.join(preferences.backup_directory, "s3")
 
@@ -383,7 +400,8 @@ class S3Backup(BupBase):
             total_synced_count += synced_count
 
             # a file that sync downloads on every run is one whose local name doesn't match its S3 key exactly - fix the local name
-            for synced_key in get_synced_keys(sync_stdout, bucket_name, destination):
+            synced_keys = get_synced_keys(sync_stdout, bucket_name, destination)
+            for synced_key in synced_keys:
                 self.fix_local_name(bucket_name, destination, synced_key, dry_run)
 
             # check the results (skip during dry run - nothing was synced)
@@ -391,6 +409,10 @@ class S3Backup(BupBase):
                 dry_run_count += 1
                 self.info_out(f"{bucket_name} : {synced_count} files would be synced")
                 continue
+
+            # what the sync received from S3, and approximately what AWS charges for sending it
+            if (synced_size := get_synced_size(destination, synced_keys)) > 0:
+                self.transfer_out(TransferRecord(BackupTypes.S3, bucket_name, synced_size, cost=get_transfer_out_cost(synced_size, transfer_out_price_per_gb)))
 
             try:
                 s3_total_size, s3_object_count = get_bucket_size(s3_access.client, bucket_name)
@@ -412,3 +434,4 @@ class S3Backup(BupBase):
             self.info_out(f"{len(buckets)} buckets, {dry_run_count} dry run, {total_synced_count} files would be synced, {len(exclusions_no_comments)} excluded")
         else:
             self.info_out(f"{len(buckets)} buckets, {count} backed up, {total_synced_count} files synced, {len(exclusions_no_comments)} excluded")
+            self.transfer_summary_out()
