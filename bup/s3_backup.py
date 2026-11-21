@@ -63,6 +63,14 @@ def is_folder_marker(s3_object: dict) -> bool:
     return s3_object["Size"] == 0 and s3_object["Key"].endswith("/")
 
 
+def get_key_components(key: str) -> List[str]:
+    """
+    The components of an S3 key that "aws s3 sync" makes the local path from: the key split at "/", without the empty components
+    of a key that starts with "/" or has "//" in it (a local path can't have them, so the AWS CLI drops them).
+    """
+    return [component for component in key.split("/") if component]
+
+
 def get_local_keys(dir_path: Path) -> set:
     """
     The S3-key-style relative paths ("/" separated) of every file under dir_path - what "aws s3 sync" matches S3 keys against.
@@ -89,7 +97,7 @@ def find_s3_objects_without_local_file(s3_client, bucket_name: str, destination:
             key = s3_object["Key"]
             if is_folder_marker(s3_object):
                 folder_marker_keys.append(key)
-            elif key not in local_keys:
+            elif "/".join(get_key_components(key)) not in local_keys:
                 missing_keys.append(key)
     return folder_marker_keys, missing_keys
 
@@ -118,7 +126,7 @@ def find_local_name_mismatches(destination: Path, key: str) -> List[LocalNameMis
     """
     mismatches = []
     current_dir = destination
-    for component in key.split("/"):
+    for component in get_key_components(key):
         entries = os.listdir(current_dir)
         if component in entries:
             current_dir = Path(current_dir, component)
@@ -165,15 +173,31 @@ def rename_local_to_match_key(destination: Path, key: str) -> Tuple[List[str], O
         renames.append(f'renamed "{old_path}" to "{mismatch.key_name}"')
 
 
+def get_local_path(destination: Path, key: str) -> Path:
+    """
+    The local file "aws s3 sync" downloads an S3 object to: the key's components as directories and a file name. A key that
+    starts with "/" does not make the path absolute - it stays inside the backup.
+    """
+    return Path(destination, *get_key_components(key))
+
+
+def normalize_printed_path(path: str) -> str:
+    """
+    A path as an absolute path with "." and ".." resolved, so a path the AWS CLI printed (which may be relative to the current
+    directory, which the CLI shares with this process) can be compared with one made here. Purely textual - the file isn't touched.
+    """
+    return os.path.normpath(os.path.join(os.getcwd(), path))
+
+
 def get_synced_keys(sync_stdout: str, bucket_name: str, destination: Path) -> List[str]:
     """
     The S3 keys "aws s3 sync" downloaded (or would download, for a dry run), from its stdout. Each line is
-    "download: s3://<bucket>/<key> to <destination><sep><key with OS separators>"; since a key may itself contain " to ",
-    the key is the prefix whose local path reconstructs the rest of the line.
+    "download: s3://<bucket>/<key> to <the key's local path>"; since a key may itself contain " to ",
+    the key is the prefix whose local path is the rest of the line. The AWS CLI prints the local path relative to the
+    current directory when it can (i.e. when the backup is on the same drive), and absolute otherwise.
     """
     synced_keys = []
     s3_prefix = f"s3://{bucket_name}/"
-    local_prefix = f"{destination}{os.sep}"
     for line in sync_stdout.splitlines():
         line = line.strip()
         if line.startswith("(dryrun) "):
@@ -189,7 +213,7 @@ def get_synced_keys(sync_stdout: str, bucket_name: str, destination: Path) -> Li
         separator_index = line.find(" to ")
         while separator_index >= 0:
             candidate_key = line[:separator_index]
-            if line[separator_index + len(" to ") :] == local_prefix + candidate_key.replace("/", os.sep):
+            if normalize_printed_path(line[separator_index + len(" to ") :]) == normalize_printed_path(str(get_local_path(destination, candidate_key))):
                 key = candidate_key
                 break
             separator_index = line.find(" to ", separator_index + 1)
@@ -221,7 +245,7 @@ def get_synced_size(destination: Path, synced_keys: List[str]) -> int:
     """
     synced_size = 0
     for synced_key in synced_keys:
-        file_path = Path(destination, synced_key)
+        file_path = get_local_path(destination, synced_key)
         try:
             synced_size += os.path.getsize(file_path)
         except OSError as e:
