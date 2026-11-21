@@ -13,14 +13,8 @@ logging.getLogger("boto3").setLevel(logging.WARNING)
 logging.getLogger("botocore").setLevel(logging.WARNING)
 
 from bup import BupBase, BackupTypes, get_preferences, ExclusionPreferences, __application_name__
-from bup.transfer import (
-    TransferRecord,
-    get_price,
-    get_transfer_out_cost,
-    get_dynamodb_read_cost,
-    default_aws_transfer_out_price_per_gb,
-    default_dynamodb_read_price_per_million_units,
-)
+from bup.transfer import TransferRecord, get_dynamodb_scan_cost
+from bup.aws_prices import get_aws_prices
 
 log = get_logger(__application_name__)
 
@@ -58,8 +52,6 @@ class DynamoDBBackup(BupBase):
         preferences = get_preferences(self.ui_type)
         backup_directory = preferences.backup_directory
         dry_run = preferences.dry_run
-        transfer_out_price_per_gb = get_price(preferences.aws_transfer_out_price_per_gb, default_aws_transfer_out_price_per_gb)
-        read_price_per_million_units = get_price(preferences.dynamodb_read_price_per_million_units, default_dynamodb_read_price_per_million_units)
         exclusions = ExclusionPreferences(self.backup_type.name).get_no_comments()
 
         dynamodb_access = DynamoDBAccess(
@@ -108,9 +100,9 @@ class DynamoDBBackup(BupBase):
                 finally:
                     # a scan that failed part way still received (and is charged for) what it read; a cached scan received nothing
                     if scan_meter.response_bytes > 0:
-                        # the read cost assumes on-demand capacity (a provisioned table's reads are already paid for)
-                        cost = get_transfer_out_cost(scan_meter.response_bytes, transfer_out_price_per_gb) + get_dynamodb_read_cost(scan_meter.read_units, read_price_per_million_units)
-                        self.transfer_out(TransferRecord(BackupTypes.DynamoDB, table_name, scan_meter.response_bytes, scan_meter.read_units, cost))
+                        region = table.resource.meta.client.meta.region_name  # tables are in the region of the client that scans them
+                        cost = get_dynamodb_scan_cost(scan_meter.response_bytes, scan_meter.read_units, get_aws_prices(region))
+                        self.transfer_out(TransferRecord(BackupTypes.DynamoDB, table_name, scan_meter.response_bytes, scan_meter.read_units, cost, region))
 
                 dir_path = Path(backup_directory, "dynamodb")
                 dir_path.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,7 @@
 """
 Tests for what the DynamoDB backup reports as received from DynamoDB.
 All tests, fixtures and helpers in this file are AI-authored (Claude Code).
+The repository's conftest.py gives every test an empty AWS price cache of its own and makes fetching prices fail as if offline.
 """
 
 from pathlib import Path
@@ -14,18 +15,20 @@ from moto import mock_aws
 from bup import UITypes
 from bup.dynamodb_backup import DynamoDBBackup, DynamoDBScanMeter
 
+from .aws_price_offers import make_fetch_offer
+
 
 def _make_preferences(tmp_path: Path, dry_run: bool = False) -> MagicMock:
-    return MagicMock(
-        backup_directory=str(tmp_path),
-        dry_run=dry_run,
-        aws_profile=None,
-        aws_access_key_id=None,
-        aws_secret_access_key=None,
-        aws_region=None,
-        aws_transfer_out_price_per_gb=None,
-        dynamodb_read_price_per_million_units=None,
-    )
+    return MagicMock(backup_directory=str(tmp_path), dry_run=dry_run, aws_profile=None, aws_access_key_id=None, aws_secret_access_key=None, aws_region=None)
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+@pytest.fixture
+def online(monkeypatch):
+    # the AWS price list is reachable - the returned stand-in for fetch_offer records what was fetched
+    fake_fetch_offer = make_fetch_offer()
+    monkeypatch.setattr("bup.aws_prices.fetch_offer", fake_fetch_offer)
+    return fake_fetch_offer
 
 
 def _make_table(scan_responses: list, scan_error=None) -> MagicMock:
@@ -34,6 +37,7 @@ def _make_table(scan_responses: list, scan_error=None) -> MagicMock:
     whatever is registered for the scan's "after-call" event - as the real boto3 client does - and then optionally fails.
     """
     table = MagicMock()
+    table.resource.meta.client.meta.region_name = "us-west-2"
     handlers = {}
     table.resource.meta.client.meta.events.register.side_effect = lambda event_name, handler: handlers.update({event_name: handler})
 
@@ -119,21 +123,31 @@ def test_scan_meter_does_not_override_a_callers_consumed_capacity_request():
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
-def test_scanned_bytes_read_units_and_cost_are_reported(tmp_path):
-    # 2 GB in two pages and 16 million read units: $0.18 of data transfer out plus $2 of reads at the default prices
+def test_scanned_bytes_read_units_and_cost_are_reported(tmp_path, online):
+    # 2 GB in two pages and 16 million read units: $0.18 of data transfer out plus $2 of reads
     infos = _run_backup(tmp_path, _make_table([(1024**3, 8000000.0), (1024**3, 8000000.0)]))
 
     assert "my_table : received 2.0 GB, 1.6e+07 read units, approximately $2.18 before any AWS free allowance" in infos
     assert "transfer total : received 2.0 GB, 1.6e+07 read units, approximately $2.18 before any AWS free allowance" in infos
+    assert online.fetched == [("AWSDataTransfer", "us-west-2"), ("AmazonDynamoDB", "us-west-2")]  # the prices of the table's region
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
-def test_cached_scan_reports_only_a_zero_total(tmp_path):
+def test_without_prices_the_scan_is_reported_without_a_cost(tmp_path):
+    # offline (see conftest.py), and no prices were fetched before
+    infos = _run_backup(tmp_path, _make_table([(2048, 4.0)]))
+
+    assert "my_table : received 2.0 KB, 4 read units" in infos
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_cached_scan_reports_only_a_zero_total_and_needs_no_prices(tmp_path, online):
     # a scan served from awsimple's cache makes no DynamoDB calls
     infos = _run_backup(tmp_path, _make_table([]))
 
     assert not any(info.startswith("my_table : received") for info in infos)
     assert "transfer total : received 0 B" in infos
+    assert online.fetched == []
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.

@@ -29,10 +29,6 @@ class BupPreferences(Pref):
 
     verbose: bool = attrib(default=False)
 
-    # prices in USD for the approximate AWS cost of a backup (None = the defaults in bup/transfer.py)
-    aws_transfer_out_price_per_gb: float = attrib(default=None)
-    dynamodb_read_price_per_million_units: float = attrib(default=None)
-
     detailed_log_directory: str = attrib(default=None)  # None/blank = detailed file logging off
     detailed_log_file_size_limit_mb: int = attrib(default=None)  # None = default limit
 

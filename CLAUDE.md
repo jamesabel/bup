@@ -50,7 +50,7 @@ python -m bup <path> -s    # CLI with S3 backup
 
 **GUI:** PyQt5 tabbed dialog (`BupDialog`) with `RunBackupWidget`, `PreferencesWidget`, `LogWidget` (detailed application log via a logging handler), `TransferWidget` (bytes received and approximate AWS cost), and `BupAbout` tabs.
 
-**Transfer accounting:** `bup/transfer.py` holds `TransferRecord`, the price defaults and cost math, and the `transfer_emitter` signal. Backups call `BupBase.transfer_out()` per bucket/table/repo that received data; the GUI shows these only in the Transfer tab and the log (not the Backup tab), the CLI prints them (see README "Transfer and approximate AWS cost").
+**Transfer accounting:** `bup/transfer.py` holds `TransferRecord`, the cost math, and the `transfer_emitter` signal. `bup/aws_prices.py` gets each AWS region's prices from the public AWS Price List files and caches them in a SQLite DB (refetched weekly; no user-entered prices) - tests never fetch or touch the real cache (root `conftest.py`). Backups call `BupBase.transfer_out()` per bucket/table/repo that received data; the GUI shows these only in the Transfer tab and the log (not the Backup tab), the CLI prints them (see README "Transfer and approximate AWS cost").
 
 ## Code Style
 

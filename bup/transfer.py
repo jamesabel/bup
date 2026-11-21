@@ -1,9 +1,9 @@
 """
 Network transfer accounting for backups: how much each backup received from AWS (and GitHub), and approximately what AWS charges for it.
 
-The costs are estimates. They use list prices that vary by region and change over time (editable in the GUI's Transfer tab), they do not
-know how much of the AWS free data transfer allowance (100 GB a month, shared by the whole AWS account) is left, and they do not include
-request charges (e.g. S3 GET and LIST).
+The costs are estimates. They use the AWS list prices of the region the data came from (see bup/aws_prices.py), they do not know how
+much of the AWS free data transfer allowance (100 GB a month, shared by the whole AWS account) is left, and they do not include request
+charges (e.g. S3 GET and LIST).
 """
 
 from dataclasses import dataclass
@@ -12,34 +12,32 @@ from typing import Iterable, Optional
 from PyQt5.QtCore import QObject, pyqtSignal
 
 from bup.backup_types import BackupTypes
+from bup.aws_prices import AWSPrices, read_units_per_million
 
 bytes_per_gb = 1024**3  # AWS bills data transfer per GB of 2^30 bytes
-
-# Default prices in USD (us-east-1 list prices when this was written - check https://aws.amazon.com/s3/pricing/ and
-# https://aws.amazon.com/dynamodb/pricing/ for the current prices in your region).
-default_aws_transfer_out_price_per_gb = 0.09  # data transfer out to the internet
-default_dynamodb_read_price_per_million_units = 0.125  # on-demand read request units
-
-read_units_per_million = 1000000
 
 smallest_displayed_cost = 0.0001  # USD
 
 size_units = ["B", "KB", "MB", "GB", "TB"]
 
 
-def get_price(preference_value, default_price: float) -> float:
+def get_transfer_out_cost(byte_count: int, aws_prices: Optional[AWSPrices]) -> Optional[float]:
     """
-    A price from a preference, which is None until the user sets it.
+    Approximate USD cost of data transfer out to the internet, or None if the region's prices are not known.
     """
-    return default_price if preference_value is None else float(preference_value)
+    if aws_prices is None:
+        return None
+    return byte_count / bytes_per_gb * aws_prices.transfer_out_price_per_gb
 
 
-def get_transfer_out_cost(byte_count: int, price_per_gb: float) -> float:
-    return byte_count / bytes_per_gb * price_per_gb
-
-
-def get_dynamodb_read_cost(read_units: float, price_per_million_units: float) -> float:
-    return read_units / read_units_per_million * price_per_million_units
+def get_dynamodb_scan_cost(byte_count: int, read_units: float, aws_prices: Optional[AWSPrices]) -> Optional[float]:
+    """
+    Approximate USD cost of scanning a DynamoDB table: the data transfer out plus the read units, priced as on-demand reads
+    (a table with provisioned capacity has already paid for its reads). None if the region's prices are not known.
+    """
+    if aws_prices is None:
+        return None
+    return get_transfer_out_cost(byte_count, aws_prices) + read_units / read_units_per_million * aws_prices.dynamodb_read_price_per_million_units
 
 
 def format_size(byte_count: int) -> str:
@@ -75,7 +73,8 @@ class TransferRecord:
     name: str
     received_bytes: int
     read_units: float = 0.0  # DynamoDB read request units consumed (DynamoDB only)
-    cost: Optional[float] = None  # approximate USD, None where there is no charge to estimate (GitHub)
+    cost: Optional[float] = None  # approximate USD, None where there is no charge to estimate (GitHub) or the AWS prices are not known
+    region: Optional[str] = None  # the AWS region the data came from (and whose prices the cost uses), None for GitHub or if not known
 
     def __str__(self):
         s = f"{self.name} : received {format_size(self.received_bytes)}"

@@ -133,10 +133,15 @@ same lines in its regular output.
 
 The costs are estimates:
 
-- The prices default to $0.09 per GB of data transfer out and $0.125 per million DynamoDB read units. AWS prices vary
-  by region and change over time, so set the prices for your region in the Transfer tab (see the
-  [S3](https://aws.amazon.com/s3/pricing/) and [DynamoDB](https://aws.amazon.com/dynamodb/pricing/) pricing pages).
-  The CLI uses the defaults.
+- bup gets the prices itself, so there is nothing to enter. AWS prices differ by region, so each S3 bucket is priced
+  at the rates of the region it is in and each DynamoDB table at the rates of the region it is read from. The prices
+  come from the public [AWS Price List](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/price-changes.html)
+  files (no AWS credentials or permissions are needed), are cached in a local SQLite database (`aws_prices.db` in
+  bup's user cache directory), and are fetched again when they are more than a week old. The Transfer tab shows the
+  prices in use and when they were fetched.
+- If the prices can not be fetched (e.g. the price list is unreachable) the previously fetched prices are used. If
+  there are none yet, the transfer is reported without a cost.
+- Volume discounts are not applied (the price used is that of the first 10 TB a month).
 - AWS does not charge for the first 100 GB of data transfer out a month, shared by the whole AWS account. bup does
   not know how much of that allowance is left, so the cost shown is before the allowance - the most the transfer could
   cost, not necessarily what you are billed.

@@ -8,13 +8,13 @@ import logging
 import pytest
 
 from bup import BupBase, BackupTypes, UITypes, __application_name__
+from bup.aws_prices import AWSPrices
 from bup.transfer import (
     TransferRecord,
     transfer_emitter,
     bytes_per_gb,
-    get_price,
     get_transfer_out_cost,
-    get_dynamodb_read_cost,
+    get_dynamodb_scan_cost,
     get_transfer_total,
     format_size,
     format_cost,
@@ -38,17 +38,19 @@ def emitted_records():
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
-def test_get_price_uses_the_default_until_set():
-    assert get_price(None, 0.09) == 0.09
-    assert get_price(0.12, 0.09) == 0.12
-    assert get_price(0.0, 0.09) == 0.0  # an explicit zero is a price, not "unset"
+def test_costs_use_the_regions_prices():
+    aws_prices = AWSPrices("us-east-1", 0.09, 0.125, 0.0)
+
+    assert get_transfer_out_cost(10 * bytes_per_gb, aws_prices) == pytest.approx(0.90)
+    assert get_transfer_out_cost(0, aws_prices) == 0.0
+    assert get_dynamodb_scan_cost(10 * bytes_per_gb, 2000000.0, aws_prices) == pytest.approx(0.90 + 0.25)  # transfer out plus reads
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
-def test_costs():
-    assert get_transfer_out_cost(10 * bytes_per_gb, 0.09) == pytest.approx(0.90)
-    assert get_transfer_out_cost(0, 0.09) == 0.0
-    assert get_dynamodb_read_cost(2000000, 0.125) == pytest.approx(0.25)
+def test_costs_are_unknown_without_prices():
+    # unknown, as opposed to free
+    assert get_transfer_out_cost(10 * bytes_per_gb, None) is None
+    assert get_dynamodb_scan_cost(10 * bytes_per_gb, 2000000.0, None) is None
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
