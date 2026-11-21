@@ -8,12 +8,25 @@ on:
 jobs:
   test:
     runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC token for the tokenless Codecov upload
+    strategy:
+      fail-fast: false
+      matrix:
+        # Policy: test the minimum supported version, the latest fully released version and the upcoming pre-release
+        # (as of 2026-11: 3.13, 3.15 and 3.16).
+        # 3.16: not tested yet - cffi (needed by cryptography, which moto depends on) has no cp316 wheel and its
+        # source build needs MSVC. Add "3.16" once every dependency installs on it. Check which packages lack wheels with:
+        #   uv pip compile pyproject.toml --extra dev --python-version 3.16 --python-platform windows --only-binary :all: --no-binary mttkinter --no-binary sqlitedict
+        # Source-built on every version (pure Python, sdist-only on PyPI, no compiler needed): mttkinter (via balsa), sqlitedict.
+        python-version: ["3.13", "3.15"]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: pyproject.toml
 
@@ -29,4 +42,16 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
           QT_QPA_PLATFORM: offscreen
-        run: pytest --cov=bup --cov-report=term test_bup
+        run: pytest --cov=bup --cov-report=term --cov-report=xml test_bup
+
+      # Tokenless (OIDC) upload, so no CODECOV_TOKEN secret is needed. A pull request from a fork gets no OIDC token,
+      # so the upload is skipped there; coverage for it is reported once it is merged.
+      - name: Upload coverage to Codecov
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          files: coverage.xml
+          disable_search: true
+          flags: python-${{ matrix.python-version }}
+          fail_ci_if_error: true

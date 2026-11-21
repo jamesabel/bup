@@ -1,3 +1,27 @@
+<p align="center">
+    <a href="https://github.com/jamesabel/bup/actions/workflows/ci.yml">
+        <img src="https://img.shields.io/github/actions/workflow/status/jamesabel/bup/ci.yml?branch=main&label=tests" alt="tests" />
+    </a>
+    <a href="https://codecov.io/gh/jamesabel/bup">
+        <img src="https://img.shields.io/codecov/c/github/jamesabel/bup/main" alt="coverage" />
+    </a>
+    <a href="https://pypi.org/project/bup/">
+        <img src="https://img.shields.io/pypi/v/bup" alt="PyPI version" />
+    </a>
+    <a href="https://pypi.org/project/bup/">
+        <img src="https://img.shields.io/pypi/pyversions/bup" alt="Python versions" />
+    </a>
+    <a href="https://pypi.org/project/bup/">
+        <img src="https://img.shields.io/pypi/dm/bup" alt="downloads per month" />
+    </a>
+    <a href="https://github.com/jamesabel/bup/blob/main/LICENSE">
+        <img src="https://img.shields.io/github/license/jamesabel/bup" alt="license" />
+    </a>
+    <a href="https://github.com/psf/black">
+        <img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="code style: black" />
+    </a>
+</p>
+
 # bup
 
 backup for github repos and AWS S3 and DynamoDB

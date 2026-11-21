@@ -1,3 +1,5 @@
+REM run from the project root, regardless of where this script is called from
+pushd "%~dp0.."
 rmdir /S /Q bup.egg-info
 rmdir /S /Q build
 rmdir /S /Q dist
@@ -9,3 +11,4 @@ python.exe -m build
 rmdir /S /Q bup.egg-info
 rmdir /S /Q build
 call deactivate
+popd
