@@ -172,6 +172,16 @@ character, on every platform.
   case-insensitive file system: they share one local file, so bup reports a case mismatch and re-downloads them on
   every run. Back up such a bucket to a case-sensitive file system to keep both objects.
 
+### S3 keys that start with "/" or contain "//"
+
+An S3 key can start with a "/" or have "//" in it (e.g. `/temp/report.json`). A local path can not, so `aws s3 sync`
+stores such an object without the empty part (`temp/report.json` inside the bucket's backup directory, never outside
+of it). bup backs these objects up and counts them like any other.
+
+`aws s3 sync` does download these objects again on every run, since it never sees the local file as the same name as
+the key. The backup is correct, but each run transfers them again. If two keys differ only by such a "/" (e.g.
+`a/b` and `a//b`) they share one local file, and only one of them is kept.
+
 # Transfer and approximate AWS cost
 
 AWS charges for data sent out to the internet, which is what a backup is. bup reports what each backup received and
