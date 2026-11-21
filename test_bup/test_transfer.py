@@ -85,6 +85,12 @@ def test_get_transfer_total():
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_get_transfer_total_across_backup_types_with_its_own_name():
+    grand_total = get_transfer_total(None, [TransferRecord(BackupTypes.S3, "a", 100, cost=0.25), TransferRecord(BackupTypes.github, "b", 200)], "Grand total")
+    assert grand_total == TransferRecord(None, "Grand total", 300, 0.0, 0.25)
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
 def test_get_transfer_total_without_costs_has_no_cost():
     # GitHub transfers have no cost, and neither does their total (as opposed to a cost of zero)
     assert get_transfer_total(BackupTypes.github, [TransferRecord(BackupTypes.github, "a", 100)]).cost is None

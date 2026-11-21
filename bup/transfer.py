@@ -69,7 +69,7 @@ class TransferRecord:
     What one backed up item (an S3 bucket, a DynamoDB table or a GitHub repo) received over the network.
     """
 
-    backup_type: BackupTypes
+    backup_type: Optional[BackupTypes]  # None for a total across backup types
     name: str
     received_bytes: int
     read_units: float = 0.0  # DynamoDB read request units consumed (DynamoDB only)
@@ -85,15 +85,16 @@ class TransferRecord:
         return s
 
 
-def get_transfer_total(backup_type: BackupTypes, transfer_records: Iterable[TransferRecord]) -> TransferRecord:
+def get_transfer_total(backup_type: Optional[BackupTypes], transfer_records: Iterable[TransferRecord], name: str = "transfer total") -> TransferRecord:
     """
-    The sum of a backup type's transfer records, as a record named "transfer total".
+    The sum of transfer records, as a record with the given name.
+    :param backup_type: the backup type the records are of, or None for a total across backup types
     """
     transfer_records = list(transfer_records)
     costs = [transfer_record.cost for transfer_record in transfer_records if transfer_record.cost is not None]
     return TransferRecord(
         backup_type,
-        "transfer total",
+        name,
         sum(transfer_record.received_bytes for transfer_record in transfer_records),
         sum(transfer_record.read_units for transfer_record in transfer_records),
         sum(costs) if costs else None,

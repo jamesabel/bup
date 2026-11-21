@@ -189,6 +189,27 @@ def test_totals_per_backup_type(transfer_widget):
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_grand_total_is_all_backup_types_together(transfer_widget):
+    assert transfer_widget.grand_total_label.text() == "Grand total : received 0 B"
+
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, "my-bucket", 1024, cost=0.5))
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.DynamoDB, "my_table", 2048, 12.5, 0.25))
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.github, "owner/repo", 1024))  # received bytes count, and it has no cost
+
+    assert transfer_widget.grand_total_label.text() == "Grand total : received 4.0 KB, 12.5 read units, approximately $0.7500 before any AWS free allowance"
+    assert transfer_widget.grand_total_label.font().bold()
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_grand_total_is_cleared_with_the_rest(transfer_widget):
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, "my-bucket", 1024, cost=0.5))
+
+    transfer_widget.clear_button.click()
+
+    assert transfer_widget.grand_total_label.text() == "Grand total : received 0 B"
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
 def test_rows_are_capped_but_totals_are_not(transfer_widget):
     with patch("bup.gui.transfer_widget.max_transfer_rows", 2):
         for name, cost in (("lowest", 0.25), ("highest", 1.0), ("middle", 0.5)):
