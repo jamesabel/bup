@@ -30,6 +30,9 @@ tools\run_flake8.bat
 # Build wheel
 tools\build.bat
 
+# Regenerate the README's screen captures (synthetic data, doc/screenshots/*.png) after a GUI change
+venv\Scripts\python.exe tools\make_screenshots.py
+
 # Run the application
 tools\bup.bat                  # GUI (no args)
 python -m bup <path> -s    # CLI with S3 backup
