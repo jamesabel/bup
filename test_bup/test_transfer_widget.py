@@ -8,7 +8,7 @@ from datetime import datetime
 from unittest.mock import patch
 
 import pytest
-from PyQt5.QtWidgets import QAbstractSpinBox, QLineEdit
+from PyQt5.QtWidgets import QApplication, QAbstractSpinBox, QLineEdit
 
 from bup import BackupTypes, aws_prices
 from bup.aws_prices import AWSPrices, AWSPriceCache
@@ -20,6 +20,10 @@ from bup.transfer import TransferRecord, transfer_emitter
 @pytest.fixture
 def transfer_widget(qapp):
     return TransferWidget()
+
+
+def qapp_process_events():
+    QApplication.instance().processEvents()  # let the shown widget lay itself out
 
 
 def _row_text(transfer_widget: TransferWidget, row: int) -> dict:
@@ -88,6 +92,29 @@ def test_reported_transfer_is_shown_most_recent_first(transfer_widget):
     assert s3_row["Time"] != ""
     del s3_row["Time"]
     assert s3_row == {"Backup": "S3", "Name": "my-bucket", "Region": "eu-west-1", "Received": "2.0 KB", "Read units": "", "Approximate cost": "$0.5000"}
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_cost_column_is_only_as_wide_as_its_contents(transfer_widget):
+    # an empty spacer column on the far right takes up the remaining width, not the "Approximate cost" column
+    transfer_widget.show()
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, "my-bucket", 2048, cost=0.5, region="eu-west-1"))
+    qapp_process_events()
+    header = transfer_widget.table.horizontalHeader()
+    cost_column = columns.index("Approximate cost")
+    spacer_column = len(columns)
+    assert transfer_widget.table.columnCount() == spacer_column + 1
+    assert transfer_widget.table.horizontalHeaderItem(spacer_column).text() == ""
+    cost_width = header.sectionSize(cost_column)
+    spacer_width = header.sectionSize(spacer_column)
+
+    # make the tab wider - all of the extra width goes to the spacer
+    extra_width = 400
+    transfer_widget.resize(transfer_widget.width() + extra_width, transfer_widget.height())
+    qapp_process_events()
+
+    assert header.sectionSize(cost_column) == cost_width
+    assert header.sectionSize(spacer_column) == spacer_width + extra_width
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.

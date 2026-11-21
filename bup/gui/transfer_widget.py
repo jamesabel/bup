@@ -81,8 +81,9 @@ class TransferWidget(QWidget):
         self.controls_widget.layout().addWidget(self.clear_button)
         self.controls_widget.layout().addStretch()
         self.layout().addWidget(self.controls_widget)
-        self.table = QTableWidget(0, len(columns))
-        self.table.setHorizontalHeaderLabels(columns)
+        # every column is as wide as its contents, and an empty spacer column on the far right takes up the remaining width
+        self.table = QTableWidget(0, len(columns) + 1)
+        self.table.setHorizontalHeaderLabels(columns + [""])
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setStretchLastSection(True)
