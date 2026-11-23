@@ -46,7 +46,7 @@ default_file_size_limit_mb = 10
 class DetailedFileLogHandler(logging.Handler):
     """
     Writes every log record to a file per log source in the given directory (s3.log, dynamodb.log, github.log, application.log),
-    so each backup type's full details (e.g. the AWS CLI calls and their stdout/stderr) are captured separately.
+    so each backup type's full details (e.g. every S3 object a sync downloads) are captured separately.
     When a file reaches max_bytes it is rotated to <name>.log.1 (replacing any previous rotation), so each source uses
     at most about twice max_bytes of disk.
     """

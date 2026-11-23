@@ -25,7 +25,7 @@ class BupPreferences(Pref):
 
     dry_run: bool = attrib(default=False)
 
-    s3_size_only: bool = attrib(default=False)  # aws s3 sync --size-only (compare file size only, not timestamps)
+    s3_size_only: bool = attrib(default=False)  # S3 sync compares file size only, not timestamps
 
     verbose: bool = attrib(default=False)
 

@@ -30,8 +30,8 @@ keeps a local copy up to date, either on demand or automatically every so many h
 
 It has a GUI for everyday use and a command line for scripts and scheduled jobs.
 
-- **S3:** each bucket is synced with `aws s3 sync`, so only new and changed objects are downloaded. Objects deleted
-  from S3 are kept locally. Each sync is checked against the bucket's contents.
+- **S3:** each bucket is synced to a local directory, so only new and changed objects are downloaded. Objects deleted
+  from S3 are kept locally. Every download is checked against the S3 object.
 - **DynamoDB:** each table is saved in full, as both a pickle file and a JSON file.
 - **GitHub:** each repository is cloned, and every branch is kept an exact mirror of the remote.
 - **Exclusions:** skip particular buckets, tables or repos, with comments to say why.
@@ -56,7 +56,8 @@ The Preferences tab holds the backup directory, credentials and the automatic ba
 
 ## Install
 
-bup needs Python 3.13 or later, and `git` on the PATH for GitHub backups. The AWS CLI it uses is installed with it.
+bup needs Python 3.13 or later, and `git` on the PATH for GitHub backups. S3 and DynamoDB need nothing else (bup does
+not use the AWS CLI).
 
 ```
 pip install bup
@@ -101,19 +102,46 @@ logs-archive        # 2 TB, backed up by a lifecycle rule instead
 scratch-bucket
 ```
 
-# S3 backup verification
+# S3 backup
 
-After each bucket is synced (`aws s3 sync`, deliberately without `--delete` so that objects deleted from S3 are
-kept in the local backup), bup lists the bucket with boto3 and compares its total size in bytes to the total size
-of the local backup directory. The comparison is by bytes, not by object count, because `aws s3 sync` does not
-copy zero-length objects. The S3 object count and the local file count are included in the result line for
-reference only.
+Each bucket is synced to `s3/<bucket>/` with [awsimple](https://github.com/jamesabel/awsimple)'s
+`S3Access.sync_to_directory()`, which works like `aws s3 sync` from a bucket to a directory:
 
-There are three outcomes:
+- The bucket is listed once. An object is downloaded when its local file is missing, has a different size, or is
+  older than the S3 object. With the "size only" preference (`--size_only`) modification times are not compared.
+- A download goes to a temporary file, which only replaces the local file once its length and checksum (S3's
+  CRC64NVME, when the object has one) are those of the S3 object. The local file gets the modification time of the
+  S3 object.
+- Local files are never deleted, so objects deleted from S3 are kept in the local backup.
+- Each bucket is accessed in the region it is in, whichever region is set in Preferences.
+- A dry run downloads nothing and reports how many files would be synced.
+- Stop lets the downloads that have started finish, and starts no others.
 
-- **S3 is larger than the local backup** - something was not backed up. This is reported as an **error** in the
-  backup output (the GUI's "Backup" tab, or the CLI's console output, where it also makes the CLI exit with a
-  non-zero status).
+## What is reported
+
+Every object a sync downloads is in the application log. In the backup output (the GUI's "Backup" tab, or the CLI's
+console output):
+
+- **An object that could not be downloaded** (or whose key can not be a local file, e.g. one with a `..` part, or on
+  Windows a `:` or a backslash) is an **error**, with the reason. The sync goes on with the other objects. In the CLI
+  an error also makes the exit status non-zero.
+- **An object that is not backed up on purpose** is a **warning**, with the reason:
+  - objects in the `GLACIER` or `DEEP_ARCHIVE` storage class, which have to be restored before they can be read
+  - keys that would be the same local file (see below)
+  - a key that is a file where other keys need a directory (`a` when there is also `a/b`)
+- **Folder markers** (keys that end in `/`, e.g. from the S3 console's "Create folder") are not files, so they are
+  never downloaded. They are expected to be absent and are only listed in the application log, as info.
+
+At most 20 objects are named per bucket for each of these, followed by how many more there are.
+
+## Verification
+
+After a bucket is synced, bup lists the bucket again with boto3 (a listing of its own, not the sync's) and compares
+the bucket's total size in bytes to the total size of the local backup directory. The objects the sync reported as
+not downloaded (see above) are left out of the S3 total, since they have already been reported. If the bucket can
+not be listed, that is an **error** and the bucket is not verified. Otherwise there are three outcomes:
+
+- **S3 is larger than the local backup** - something that should be there is not. This is reported as an **error**.
 - **Local backup is larger than S3** - expected over time, since deletions in S3 are retained locally. Logged as
   info only.
 - **Match** - logged as info only.
@@ -124,63 +152,25 @@ directory is configured in Preferences, each backup type's log also goes to its 
 `dynamodb.log`, `github.log`, `application.log`). A result line looks like:
 
 ```
-my-bucket : local backup is larger than S3 (files deleted from S3 are retained locally) (synced=3, s3_count=120, local_count=125; s3_total_size=10485760, local_size=10520000)
+my-bucket : local backup is larger than S3 (files deleted from S3 are retained locally) (synced=3, not_backed_up=0, failed=0, s3_count=120, local_count=125; s3_total_size=10485760, backed_up_size=10485760, local_size=10520000)
 ```
 
-## A lower local file count, and files that download every run
+A bucket that was stopped part way is not verified.
 
-`aws s3 sync` matches each S3 key against the local relative path as an exact string. Two consequences show up
-in the result lines, and bup explains both - and fixes the second:
+## S3 keys and local file names
 
-- **Fewer local files than S3 objects** (`local_count` below `s3_count`). When this happens, bup lists the bucket
-  again and compares the keys to the local files. Zero-byte objects whose key ends in `/` (the S3 console's
-  "Create folder") are *folder markers* - `aws s3 sync` never downloads them, so they are expected to be absent and
-  are listed in the application log as info. Any other object with no local file at exactly its path is a
-  **warning** in the backup output, naming the object and, when a similarly named local file or directory exists,
-  how the names differ.
-- **A file that is downloaded on every run** even though it is already backed up. On Windows, file names are
-  case-insensitive and trailing spaces and dots are stripped, so a download can land in an existing file or
-  directory whose on-disk name differs from the S3 key. Sync then never sees an exact match and downloads the
-  file again each run. After each sync, bup checks the local name of every downloaded file against its key and,
-  since the download just made is the current version, **renames the local file or directory to the key's exact
-  name** (outermost component first - renaming a directory fixes everything under it at once). Each rename is
-  reported as info in the backup output, and the next sync finds the file already backed up. A name the file
-  system cannot store (e.g. a key ending in a space, on Windows) or a rename that fails is a **warning** naming
-  the file and the reason. A dry run renames nothing and reports the mismatch as a warning instead.
+An S3 key is any string, and a local file name is not. bup never changes the name a file already has in the backup.
 
-```
-my-bucket : renamed "D:\b\s3\my-bucket\static\Vendor" to "vendor" to match the S3 key "static/vendor/select2.js" so the next sync finds it already backed up
-```
-
-### How S3 key case is handled
-
-S3 keys are case-sensitive: `Photos/IMG_1.jpg` and `photos/img_1.jpg` are two different objects. bup never changes
-or folds the case of a key - the local path of every object is made to match its key exactly, character for
-character, on every platform.
-
-- **Case-sensitive file systems** (Linux, and macOS or Windows volumes formatted case-sensitive): the local path is
-  always the key as-is, so case needs no special handling and keys that differ only in case are stored as separate
-  files.
-- **Case-insensitive file systems** (the Windows default, and macOS by default): a download can land in an existing
-  file or directory whose name differs from the key only in case, e.g. a key `static/vendor/select2.js` landing
-  under an existing `static\Vendor` directory. `aws s3 sync` compares names as exact strings, so it would never
-  see a match and would download that object again on every run. After each sync, bup compares the local name of
-  every downloaded file to its key, component by component, and renames any that differ only in case (or only in
-  Unicode normalization, or by a trailing space or dot) to the key's exact spelling, reporting each rename as
-  info. A dry run reports the mismatch as a warning instead of renaming.
-- **Keys that differ only in case** (`Readme.md` and `readme.md` in the same prefix) cannot both exist on a
-  case-insensitive file system: they share one local file, so bup reports a case mismatch and re-downloads them on
-  every run. Back up such a bucket to a case-sensitive file system to keep both objects.
-
-### S3 keys that start with "/" or contain "//"
-
-An S3 key can start with a "/" or have "//" in it (e.g. `/temp/report.json`). A local path can not, so `aws s3 sync`
-stores such an object without the empty part (`temp/report.json` inside the bucket's backup directory, never outside
-of it). bup backs these objects up and counts them like any other.
-
-`aws s3 sync` does download these objects again on every run, since it never sees the local file as the same name as
-the key. The backup is correct, but each run transfers them again. If two keys differ only by such a "/" (e.g.
-`a/b` and `a//b`) they share one local file, and only one of them is kept.
+- **Case.** S3 keys are case-sensitive: `Photos/IMG_1.jpg` and `photos/img_1.jpg` are two different objects. On a
+  case-sensitive file system (Linux) they are two files. Where file names that only differ in case are the same file
+  (Windows and macOS), the local file of a key is found whatever its case on disk, e.g. the key
+  `static/vendor/select2.js` under an existing `static\Vendor` directory, so it is not downloaded again. Keys that
+  only differ in case can not both be stored there: none of them is downloaded, and each is a warning. Back up such a
+  bucket to a case-sensitive file system to keep them all.
+- **Keys that start with "/" or contain "//"** (e.g. `/temp/report.json`). A local path can not have an empty part,
+  so the object is stored without it (`temp/report.json` inside the bucket's backup directory, never outside of it),
+  and is found there on the next run. If two keys only differ by such a "/" (`a/b` and `a//b`) they would be the same
+  local file: neither is downloaded, and each is a warning.
 
 # Transfer and approximate AWS cost
 
@@ -190,7 +180,7 @@ per S3 bucket, DynamoDB table or GitHub repo that received anything (sorted by c
 per backup type and a grand total. The CLI prints the
 same lines in its regular output.
 
-- **S3:** the total size of the files `aws s3 sync` downloaded, priced as data transfer out.
+- **S3:** the total size of the objects the sync downloaded, priced as data transfer out.
 - **DynamoDB:** the size of the table scan responses, priced as data transfer out, plus the read units the scan
   consumed, priced as on-demand reads. Tables are only scanned when they have changed or about once a day, so many
   runs receive nothing.

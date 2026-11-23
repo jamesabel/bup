@@ -45,7 +45,7 @@ python -m bup <path> -s    # CLI with S3 backup
 **Threading model:** All backup operations inherit from `BupBase` (a `QThread` subclass) and communicate with the UI via Qt signals (`info_out_signal`, `warning_out_signal`, `error_out_signal`). Backups run in separate threads and are joined on completion.
 
 **Three backup implementations:**
-- `S3Backup` - Uses awsimple + AWS CLI subprocess for bucket syncing
+- `S3Backup` - Uses awsimple's `S3Access.sync_to_directory()` to sync each bucket to a directory, in the bucket's own region (no AWS CLI; local files are never deleted). Per object outcomes: downloaded/failed/skipped (see README "S3 backup")
 - `DynamoDBBackup` - Uses awsimple, exports tables to pickle and JSON
 - `GithubBackup` - Uses github3.py for API access, GitPython for git operations (clone, then mirror every branch by `fetch --prune` + `reset --hard origin/<branch>` - never `git pull`, so force-pushed/orphan branches never trigger a re-clone)
 
@@ -65,7 +65,7 @@ python -m bup <path> -s    # CLI with S3 backup
 
 ## Key Dependencies
 
-- `boto3` / `awsimple` / `awscli` - AWS access
+- `boto3` / `awsimple` - AWS access
 - `github3.py` / `GitPython` - GitHub API and git operations
 - `PyQt5` - GUI framework (also used for QThread in CLI path)
 - `pref` / `sqlitedict` - Persistent preferences

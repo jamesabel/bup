@@ -120,7 +120,7 @@ class PreferencesWidget(QWidget):
         self.layout().addWidget(QLabel())  # space
         self.layout().addWidget(QLabel())  # space
 
-        # detailed log directory (optional - one log file per backup type, with e.g. the full AWS CLI calls and their output)
+        # detailed log directory (optional - one log file per backup type, with e.g. every S3 object a sync downloads)
         # debounce applying the directory so a half-typed path doesn't start collecting log files
         self.detailed_log_apply_timer = QTimer(self)
         self.detailed_log_apply_timer.setSingleShot(True)

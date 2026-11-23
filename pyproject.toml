@@ -24,8 +24,7 @@ dependencies = [
     "balsa",
     "boto3",
     "typeguard",
-    "awsimple",
-    "awscli",
+    "awsimple>=9.2.0",  # S3Access.sync_to_directory(), which does the S3 backup
     "GitPython",
     "github3.py",
     "sqlitedict",
