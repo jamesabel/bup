@@ -157,6 +157,13 @@ class PreferencesWidget(QWidget):
         self.s3_size_only_check_box.clicked.connect(self.s3_size_only_clicked)
         self.layout().addWidget(self.s3_size_only_check_box)
 
+        # S3 verification of every local file against S3, after the backup
+        self.s3_verify_check_box = QCheckBox(
+            "S3 backup is followed by a verification of every local file against S3: size, hash and modification time (a request to S3 per object, and reads every file)"
+        )
+        self.s3_verify_check_box.clicked.connect(self.s3_verify_clicked)
+        self.layout().addWidget(self.s3_verify_check_box)
+
         # verbose
         self.verbose_check_box = QCheckBox("Verbose")
         self.verbose_check_box.clicked.connect(self.verbose_clicked)
@@ -179,6 +186,7 @@ class PreferencesWidget(QWidget):
             self.detailed_log_file_size_limit.setValue(preferences.detailed_log_file_size_limit_mb)
         self.dry_run_check_box.setChecked(bool(preferences.dry_run))  # None translates to False
         self.s3_size_only_check_box.setChecked(bool(preferences.s3_size_only))  # None translates to False
+        self.s3_verify_check_box.setChecked(bool(preferences.s3_verify))  # None translates to False
         self.verbose_check_box.setChecked(bool(preferences.verbose))  # None translates to False
         self.automatic_backup_enable_check_box.setChecked(bool(preferences.automatic_backup))
         if preferences.backup_period is not None:
@@ -247,6 +255,9 @@ class PreferencesWidget(QWidget):
 
     def s3_size_only_clicked(self):
         get_gui_preferences().s3_size_only = self.s3_size_only_check_box.isChecked()
+
+    def s3_verify_clicked(self):
+        get_gui_preferences().s3_verify = self.s3_verify_check_box.isChecked()
 
     def automatic_backup_changed(self):
         preferences = get_gui_preferences()

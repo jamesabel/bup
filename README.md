@@ -76,6 +76,7 @@ bup D:\backup -d                 # DynamoDB
 bup D:\backup -a -p my-profile   # S3 and DynamoDB, with an AWS profile
 bup D:\backup -g -t <token>      # GitHub (the token is saved for later runs)
 bup D:\backup -s --dry_run       # show what an S3 backup would do
+bup D:\backup -s --verify        # S3, then verify every local file against S3
 bup --help                       # all the options
 ```
 
@@ -156,6 +157,37 @@ my-bucket : local backup is larger than S3 (files deleted from S3 are retained l
 ```
 
 A bucket that was stopped part way is not verified.
+
+## Verifying every file against S3 (optional)
+
+The check above is of total sizes. With "S3 backup is followed by a verification of every local file against S3"
+set in Preferences (`--verify` on the command line), bup also checks every file once all the buckets are backed
+up. It is off by default because it takes a while: it makes a request to S3 for the metadata of every object
+(AWS charges for these requests, about $0.0004 per 1000) and reads every local file to hash it, on every run.
+
+For every S3 object the sync says has a current local file (downloaded in this run, or already up to date), the
+local file is compared to the metadata of the S3 object:
+
+- **Size.**
+- **Hash** of the contents, with the strongest hash of the whole object that S3 has: a SHA-512 (S3's own, or the
+  one awsimple writes as object metadata), otherwise S3's SHA-256, SHA-1, CRC64NVME, CRC32C or CRC32 checksum.
+  S3 only has a checksum of an object that was written with one, and the checksum of an object that was uploaded
+  in parts can be of the parts rather than the whole. Such an object has no hash to compare, so only its size and
+  modification time are checked, and the result line says how many there were.
+- **Modification time.** A file gets the modification time of its S3 object when it is downloaded. Times within
+  2 seconds are the same.
+
+A file that is missing or whose size or hash is not the S3 object's is an **error**. A file with the contents of
+the S3 object but another modification time is a **warning** (e.g. with "size only" set, an object that was
+written to S3 again with the same size is not downloaded again). At most 20 files are named per bucket for each.
+Each bucket has a result line in the backup output, followed by a total:
+
+```
+my-bucket : verified 120 of 120 files against S3 : 0 differ, 0 have a different modification time, 3 have no hash in S3 (size and modification time only)
+verified 120 files in 1 buckets against S3, 0 differ
+```
+
+A dry run is not verified, and Stop ends the verification.
 
 ## S3 keys and local file names
 

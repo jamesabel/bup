@@ -26,6 +26,7 @@ class BupPreferences(Pref):
     dry_run: bool = attrib(default=False)
 
     s3_size_only: bool = attrib(default=False)  # S3 sync compares file size only, not timestamps
+    s3_verify: bool = attrib(default=False)  # after the S3 backup, verify every local file against the metadata of its S3 object (size, hash, modification time)
 
     verbose: bool = attrib(default=False)
 
