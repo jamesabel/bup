@@ -45,7 +45,7 @@ python -m bup <path> -s    # CLI with S3 backup
 **Threading model:** All backup operations inherit from `BupBase` (a `QThread` subclass) and communicate with the UI via Qt signals (`info_out_signal`, `warning_out_signal`, `error_out_signal`). Backups run in separate threads and are joined on completion.
 
 **Three backup implementations:**
-- `S3Backup` - Uses awsimple's `S3Access.sync_to_directory()` to sync each bucket to a directory, in the bucket's own region (no AWS CLI; local files are never deleted). Per object outcomes: downloaded/failed/skipped (see README "S3 backup"). With the `s3_verify` preference (`--verify`), every local file is then checked against its S3 object's metadata - size, hash, mtime - by `bup/s3_verify.py`
+- `S3Backup` - Uses awsimple's `S3Access.sync_to_directory()` to sync each bucket to a directory, in the bucket's own region (no AWS CLI; local files are never deleted). Per object outcomes: downloaded/failed/skipped (see README "S3 backup"). With the `s3_verify` preference (`--verify`), every local file is then checked against its S3 object's metadata - size, hash, mtime - by awsimple's `S3Access.verify_directory()`, which is given the sync result; bup only reports its outcomes (`S3Backup.verify_bucket()`)
 - `DynamoDBBackup` - Uses awsimple, exports tables to pickle and JSON
 - `GithubBackup` - Uses github3.py for API access, GitPython for git operations (clone, then mirror every branch by `fetch --prune` + `reset --hard origin/<branch>` - never `git pull`, so force-pushed/orphan branches never trigger a re-clone). `run_backup()` -> `backup_repo()` -> `pull_repo()` or `clone_repo()`; `pull_branches()` -> `open_repo()`, `fetch()`, `reset_branch()` per branch, `switch_branch()`
 

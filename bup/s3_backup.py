@@ -1,17 +1,16 @@
 """
 The S3 backup: every bucket is synced to a local directory with awsimple's S3Access.sync_to_directory() (which never deletes a local
 file), the sync is checked against a listing of the bucket, and optionally every local file is then verified against the metadata
-of its S3 object (see bup/s3_verify.py). See README "S3 backup".
+of its S3 object (with awsimple's S3Access.verify_directory()). See README "S3 backup".
 """
 
 import os
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
-from awsimple import S3Access, S3SyncObject, S3SyncOutcome, S3SyncResult, AWSimpleException, s3_key_to_local_path
+from awsimple import S3Access, S3SyncObject, S3SyncOutcome, S3SyncResult, S3VerifyOutcome, AWSimpleException
 from botocore.exceptions import BotoCoreError, ClientError
 from balsa import get_logger
 
@@ -19,13 +18,10 @@ from bup import __application_name__, BupBase, BackupTypes, get_preferences, Exc
 from bup.aws_access import get_aws_access_kwargs
 from bup.transfer import TransferRecord, get_transfer_out_cost
 from bup.aws_prices import get_aws_prices
-from bup.s3_verify import S3FileVerification, verify_local_file
 
 log = get_logger(__application_name__)
 
 max_keys_to_list = 20  # cap on the S3 keys named in the backup output for one bucket and one kind of outcome
-
-verify_max_workers = 10  # local files verified against their S3 objects at a time (each takes a request to S3 and a read of the file)
 
 
 # sundry candidate
@@ -261,50 +257,44 @@ class S3Backup(BupBase):
     # the optional verification of every local file against S3
     # ----------------------------------------------------------------------------------------------------------------------------
 
-    def verify_object(self, bucket_access: S3Access, destination: Path, sync_object: S3SyncObject) -> Optional[S3FileVerification]:
-        """
-        Verify the local file of one S3 object against the metadata of the object, which takes a request to S3. Called from several
-        threads at a time, so it reports nothing itself.
-        :return: the result, or None if a stop was requested before it started
-        """
-        if self.stop_requested:
-            return None
-        try:
-            s3_object_metadata = bucket_access.get_s3_object_metadata(sync_object.key)
-        except (ClientError, BotoCoreError, AWSimpleException) as e:
-            return S3FileVerification(sync_object.key, [f"could not get the metadata of the S3 object ({e})"])
-        return verify_local_file(s3_key_to_local_path(destination, sync_object.key), s3_object_metadata)
-
-    def verify_bucket(self, bucket: SyncedBucket) -> Tuple[int, int]:
+    def verify_bucket(self, bucket: SyncedBucket) -> Tuple[int, int, int]:
         """
         Verify every local file that the sync says is a current copy of its S3 object (downloaded or already up to date) against the
-        metadata of the object: size, hash and modification time. A file that is not a copy is an error, a modification time that
-        differs (of a file that is otherwise a copy) is a warning.
-        :return: (number of files verified, number of them that are not a copy of their S3 object)
+        metadata of the object, with awsimple's S3Access.verify_directory(): size, hash and modification time. A file that is not a
+        copy, or that could not be verified, is an error. A modification time that differs (of a file that has the contents of its
+        S3 object) is a warning.
+        :return: (number of files that were verified, number of them that are not a copy of their S3 object, number that could not be verified)
         """
-        sync_objects = bucket.get_backed_up()
-        log.info(f'{bucket.name} : verifying {len(sync_objects)} files in "{bucket.destination}" against S3')
-        with ThreadPoolExecutor(verify_max_workers) as executor:
-            verifications = [verification for verification in executor.map(partial(self.verify_object, bucket.access, bucket.destination), sync_objects) if verification is not None]
+        log.info(f'{bucket.name} : verifying the files in "{bucket.destination}" against S3')
+        verify_result = bucket.access.verify_directory(bucket.destination, sync_result=bucket.sync_result, stop_event=self.stop_event)
 
-        differ = [verification for verification in verifications if verification.problems]
+        differ = verify_result.get_objects(S3VerifyOutcome.differs)
         self.lines_out(
             self.error_out,
-            [f'{bucket.name} : "{verification.key}" is not a copy of the S3 object : {"; ".join(verification.problems)}' for verification in differ],
+            [f'{bucket.name} : "{verify_object.key}" is not a copy of the S3 object : {verify_object.reason}' for verify_object in differ],
             f"{bucket.name} : {{}} more local files are not a copy of their S3 object",
         )
-        mtime_differs = [verification for verification in verifications if not verification.problems and verification.mtime_difference is not None]
+        failed = verify_result.get_objects(S3VerifyOutcome.failed)
+        self.lines_out(
+            self.error_out,
+            [f'{bucket.name} : "{verify_object.key}" could not be verified : {verify_object.reason}' for verify_object in failed],
+            f"{bucket.name} : {{}} more local files could not be verified",
+        )
+        mtime_differs = verify_result.get_objects(S3VerifyOutcome.mtime_differs)
         self.lines_out(
             self.warning_out,
-            [f'{bucket.name} : "{verification.key}" has the contents of the S3 object, but {verification.mtime_difference}' for verification in mtime_differs],
+            [f'{bucket.name} : "{verify_object.key}" has the contents of the S3 object, but {verify_object.reason}' for verify_object in mtime_differs],
             f"{bucket.name} : {{}} more local files have a modification time that is not their S3 object's",
         )
-        no_hash_count = sum(not verification.s3_has_hash for verification in verifications)
+        same_contents = verify_result.get_objects(S3VerifyOutcome.verified) + mtime_differs
+        no_hash_count = sum(verify_object.hash_name is None for verify_object in same_contents)  # S3 has no hash of the whole contents of these
+        verified_count = len(same_contents) + len(differ) + len(failed)
+        could_not = f", {len(failed)} could not be verified" if failed else ""
         self.info_out(
-            f"{bucket.name} : verified {len(verifications)} of {len(sync_objects)} files against S3 : {len(differ)} differ, {len(mtime_differs)} have a different modification time, "
-            f"{no_hash_count} have no hash in S3 (size and modification time only)"
+            f"{bucket.name} : verified {verified_count} of {verified_count + verify_result.get_count(S3VerifyOutcome.not_attempted)} files against S3 : {len(differ)} differ, "
+            f"{len(mtime_differs)} have a different modification time, {no_hash_count} have no hash in S3 (size and modification time only){could_not}"
         )
-        return len(verifications), len(differ)
+        return verified_count, len(differ), len(failed)
 
     def verify_backup(self, buckets: List[SyncedBucket]):
         """
@@ -314,15 +304,18 @@ class S3Backup(BupBase):
         bucket_count = 0
         total_verified_count = 0
         total_differ_count = 0
+        total_failed_count = 0
         for bucket in buckets:
             if self.stop_requested:
                 break
-            verified_count, differ_count = self.verify_bucket(bucket)
+            verified_count, differ_count, failed_count = self.verify_bucket(bucket)
             bucket_count += 1
             total_verified_count += verified_count
             total_differ_count += differ_count
+            total_failed_count += failed_count
+        could_not = f", {total_failed_count} could not be verified" if total_failed_count > 0 else ""
         stopped = " (stopped before all files were verified)" if self.stop_requested else ""
-        self.info_out(f"verified {total_verified_count} files in {bucket_count} buckets against S3, {total_differ_count} differ{stopped}")
+        self.info_out(f"verified {total_verified_count} files in {bucket_count} buckets against S3, {total_differ_count} differ{could_not}{stopped}")
 
     # ----------------------------------------------------------------------------------------------------------------------------
     # the backup

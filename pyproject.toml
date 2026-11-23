@@ -24,7 +24,7 @@ dependencies = [
     "balsa",
     "boto3",
     "typeguard",
-    "awsimple>=9.2.0",  # S3Access.sync_to_directory(), which does the S3 backup
+    "awsimple>=9.3.0",  # S3Access.sync_to_directory() and verify_directory(), which do the S3 backup and its verification
     "GitPython",
     "github3.py",
     "sqlitedict",

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 from unittest.mock import patch, MagicMock
 
-from awsimple import AWSimpleException, S3ObjectMetadata, S3SyncObject, S3SyncOutcome, S3SyncResult
+from awsimple import S3SyncObject, S3SyncOutcome, S3SyncResult, S3VerifyObject, S3VerifyOutcome, S3VerifyResult
 
 from bup import UITypes
 from bup.s3_backup import S3Backup
@@ -19,6 +19,14 @@ def make_sync_result(sync_objects: List[S3SyncObject]) -> S3SyncResult:
 
 def downloaded(key: str, size: int) -> S3SyncObject:
     return S3SyncObject(key, size, S3SyncOutcome.downloaded)
+
+
+def make_verify_result(verify_objects: List[S3VerifyObject]) -> S3VerifyResult:
+    return S3VerifyResult({verify_object.key: verify_object for verify_object in verify_objects})
+
+
+def verified(key: str, hash_name: Optional[str] = "SHA-512") -> S3VerifyObject:
+    return S3VerifyObject(key, S3VerifyOutcome.verified, hash_name=hash_name)
 
 
 def head_bucket_response(bucket_region: str) -> dict:
@@ -42,22 +50,21 @@ class FakeS3:
     """
     What S3Access is replaced with: every instance lists the given buckets, and the instance of a bucket syncs with that bucket's
     given result (or raises it, if it is an exception, or calls it for the result, if it is a function). The instance made for each
-    bucket is in .bucket_accesses, with the keyword arguments it was made with in .bucket_access_kwargs.
+    bucket is in .bucket_accesses, with the keyword arguments it was made with in .bucket_access_kwargs. A verification of a bucket
+    gives the result in .verify_results for it, or without one finds every file verified that the sync downloaded or found up to date.
     """
 
     def __init__(self, sync_results: Dict[str, Union[S3SyncResult, Exception, Callable[..., S3SyncResult]]], bucket_region: str = "us-east-1"):
         self.sync_results = sync_results
         self.bucket_region = bucket_region
         self.bucket_accesses: Dict[str, MagicMock] = {}
-        # the metadata of the objects (or the exception that getting it raises), by key, for a verification of the local files against S3
-        self.object_metadata: Dict[str, Union[S3ObjectMetadata, Exception]] = {}
+        self.verify_results: Dict[str, S3VerifyResult] = {}  # by bucket name
         self.bucket_access_kwargs: Dict[str, dict] = {}
 
     def __call__(self, bucket_name: Optional[str] = None, **kwargs) -> MagicMock:
         s3_access = MagicMock()
         s3_access.bucket_list.return_value = list(self.sync_results)
         s3_access.client.head_bucket.return_value = head_bucket_response(self.bucket_region)
-        s3_access.get_s3_object_metadata.side_effect = self.get_s3_object_metadata
         if bucket_name is not None:
             sync_result = self.sync_results[bucket_name]
             if isinstance(sync_result, Exception) or callable(sync_result):
@@ -67,16 +74,15 @@ class FakeS3:
                 # the listing of the bucket that verifies the sync: the objects of the sync result
                 contents = [{"Key": sync_object.key, "Size": sync_object.size} for sync_object in sync_result.objects.values()]
                 s3_access.client.get_paginator.return_value.paginate.return_value = [{"Contents": contents}]
+            s3_access.verify_directory.side_effect = lambda dest_dir, **kwargs: self.verify_directory(bucket_name, kwargs["sync_result"])
             self.bucket_accesses[bucket_name] = s3_access
             self.bucket_access_kwargs[bucket_name] = kwargs
         return s3_access
 
-    def get_s3_object_metadata(self, s3_key: str) -> S3ObjectMetadata:
-        if s3_key not in self.object_metadata:
-            raise AWSimpleException(f"{s3_key=} does not exist")
-        if isinstance(object_metadata := self.object_metadata[s3_key], Exception):
-            raise object_metadata
-        return object_metadata
+    def verify_directory(self, bucket_name: str, sync_result: S3SyncResult) -> S3VerifyResult:
+        if bucket_name in self.verify_results:
+            return self.verify_results[bucket_name]
+        return make_verify_result([verified(sync_object.key) for sync_object in sync_result.objects.values() if sync_object.outcome in (S3SyncOutcome.downloaded, S3SyncOutcome.up_to_date)])
 
 
 def run_s3_backup(
