@@ -53,7 +53,7 @@ class LogPane(QGroupBox):
 
 class LogWidget(QWidget):
     """
-    "Log" tab - detailed application log (e.g. the full AWS CLI command lines), fed by all log records of this application's logger,
+    "Log" tab - detailed application log (e.g. every S3 object a sync downloads), fed by all log records of this application's logger,
     with a separate pane per backup type plus one for the rest of the application.
     """
 

@@ -128,10 +128,9 @@ def main():
         for region_prices in synthetic_prices:
             AWSPriceCache(price_cache_path).put(region_prices)
 
-        from bup.gui import BupDialog, RunBackupWidget, about
+        from bup.gui import BupDialog, RunBackupWidget
         from bup.gui.run_backup_widget import DisplayTypes
 
-        about.get_aws_cli_version_text = lambda: "(not checked)"  # the real one runs the AWS CLI and asks PyPI
         RunBackupWidget.start = lambda self: False  # never run a backup
 
         dialog = BupDialog()

@@ -22,7 +22,7 @@ class BupBase(QThread):
     @typechecked()
     def __init__(self, ui_type: UITypes, info_out: Callable, warning_out: Callable, error_out: Callable):
         super().__init__()
-        self._stop_requested = False
+        self.stop_event = threading.Event()  # set to request a stop - an event so it can also be given to what a backup calls
         self.error_count = 0
         self.transfer_records: List[TransferRecord] = []
         self.ui_type = ui_type
@@ -35,7 +35,7 @@ class BupBase(QThread):
 
     def start(self, *args, **kwargs):
         # a prior run may have been stopped or had errors - a new start is a fresh run
-        self._stop_requested = False
+        self.stop_event.clear()
         self.error_count = 0
         self.transfer_records = []
         super().start(*args, **kwargs)
@@ -52,11 +52,11 @@ class BupBase(QThread):
         raise NotImplementedError
 
     def request_stop(self):
-        self._stop_requested = True
+        self.stop_event.set()
 
     @property
     def stop_requested(self) -> bool:
-        return self._stop_requested
+        return self.stop_event.is_set()
 
     def info_out(self, s: str):
         # callees could call emit(), but that seems awkward so provide this method
