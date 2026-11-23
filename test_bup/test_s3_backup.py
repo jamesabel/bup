@@ -9,30 +9,9 @@ from botocore.exceptions import ClientError, NoCredentialsError
 from moto.server import ThreadedMotoServer
 
 from bup import UITypes, __application_name__
-from bup.s3_backup import (
-    LocalNameMismatch,
-    S3Backup,
-    compare_backup_sizes,
-    count_synced_files,
-    find_local_name_mismatches,
-    find_s3_objects_without_local_file,
-    get_bucket_size,
-    get_dir_size,
-    get_synced_keys,
-    rename_local_to_match_key,
-)
+from bup.s3_backup import S3Backup, compare_backup_sizes, get_dir_size
 
 fake_aws_cli = (Path("aws"), Path("python"))
-
-
-@pytest.fixture(autouse=True)
-def up_to_date_aws_cli():
-    # keep run() tests from shelling out to a real AWS CLI or hitting PyPI for the version check
-    with (
-        patch("bup.s3_backup.get_aws_cli_version", return_value="1.0.0"),
-        patch("bup.s3_backup.get_latest_awscli_version", return_value="1.0.0"),
-    ):
-        yield
 
 
 class FakePaginator:
