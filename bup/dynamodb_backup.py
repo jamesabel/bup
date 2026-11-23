@@ -129,11 +129,11 @@ class DynamoDBBackup(BupBase):
         dry_run = preferences.dry_run
         exclusions = ExclusionPreferences(self.backup_type.name).get_no_comments()
 
-        dynamodb_access = DynamoDBAccess(**get_aws_access_kwargs(preferences))
         try:
+            dynamodb_access = DynamoDBAccess(**get_aws_access_kwargs(preferences))  # making the access raises if the AWS profile does not exist
             tables = dynamodb_access.get_table_names()
         except (ClientError, BotoCoreError) as e:
-            # BotoCoreError covers e.g. NoCredentialsError and EndpointConnectionError
+            # BotoCoreError covers e.g. ProfileNotFound, NoCredentialsError and EndpointConnectionError
             self.error_out(f"could not list DynamoDB tables - check credentials and connectivity : {e}")
             return
         self.info_out(f"found {len(tables)} DynamoDB tables")
