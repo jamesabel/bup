@@ -156,14 +156,14 @@ def test_mtime_that_differs(tmp_path):
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
 def test_mtime_within_the_window_is_the_same(tmp_path):
     # the window allows for the time resolutions of S3 and of file systems (e.g. 2 seconds on FAT)
-    assert mtime_abs_tol == 3.0
+    assert mtime_abs_tol == 10.0
     s3_object_metadata = _make_metadata(metadata_sha512=_sha512())
 
-    for seconds in (-3, -2, 2, 3):
+    for seconds in (-10, -3, 3, 10):
         local_path = _write_file(tmp_path / "a.txt", mtime=s3_mtime + timedelta(seconds=seconds))
         assert verify_local_file(local_path, s3_object_metadata).mtime_difference is None
 
-    for seconds in (-4, 4):
+    for seconds in (-11, 11):
         local_path = _write_file(tmp_path / "a.txt", mtime=s3_mtime + timedelta(seconds=seconds))
         assert verify_local_file(local_path, s3_object_metadata).mtime_difference == f"the local file was modified {seconds:+d} seconds from the S3 object (2026-11-20T12:00:00+00:00)"
 

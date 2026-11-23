@@ -175,7 +175,7 @@ local file is compared to the metadata of the S3 object:
   in parts can be of the parts rather than the whole. Such an object has no hash to compare, so only its size and
   modification time are checked, and the result line says how many there were.
 - **Modification time.** A file gets the modification time of its S3 object when it is downloaded. Times within
-  3 seconds are the same, to allow for the time resolutions of S3 and of file systems.
+  10 seconds are the same, to allow for the time resolutions of S3 and of file systems.
 
 A file that is missing or whose size or hash is not the S3 object's is an **error**. A file with the contents of
 the S3 object but another modification time is a **warning** (e.g. with "size only" set, an object that was
