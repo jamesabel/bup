@@ -22,9 +22,9 @@ jobs:
         # Source-built on every version (pure Python, sdist-only on PyPI, no compiler needed): mttkinter (via balsa), sqlitedict.
         python-version: ["3.13", "3.15"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -48,7 +48,7 @@ jobs:
       # so the upload is skipped there; coverage for it is reported once it is merged.
       - name: Upload coverage to Codecov
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           use_oidc: true
           files: coverage.xml
