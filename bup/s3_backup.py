@@ -196,12 +196,13 @@ class S3Backup(BupBase):
         :return: the synced bucket, or None if the sync could not be done at all (which is reported as an error)
         """
         bucket_region = get_bucket_region(s3_access.client, bucket_name)
-        log.info(f'{bucket_name} : sync to "{destination}" ({bucket_region=}, size_only={preferences.s3_size_only}, dry_run={preferences.dry_run})')
+        # The preferences database gives a bool preference as an int (and None if it was never set), and awsimple checks the types of its arguments.
+        size_only = bool(preferences.s3_size_only)
+        dry_run = bool(preferences.dry_run)
+        log.info(f'{bucket_name} : sync to "{destination}" ({bucket_region=}, {size_only=}, {dry_run=})')
         try:
             bucket_access = S3Access(bucket_name, **get_aws_access_kwargs(preferences, bucket_region))
-            sync_result = bucket_access.sync_to_directory(
-                destination, size_only=preferences.s3_size_only, dry_run=preferences.dry_run, stop_event=self.stop_event, callback=partial(log_synced_object, bucket_name)
-            )
+            sync_result = bucket_access.sync_to_directory(destination, size_only=size_only, dry_run=dry_run, stop_event=self.stop_event, callback=partial(log_synced_object, bucket_name))
         except (ClientError, BotoCoreError, AWSimpleException, OSError) as e:
             self.error_out(f"could not sync {bucket_name} : {e}")
             return None

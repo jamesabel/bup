@@ -302,3 +302,34 @@ def test_real_dry_run_downloads_nothing(moto_s3_endpoint, tmp_path):
     assert backup.errors == []
     assert backup.transfer_records == []
     assert os.listdir(tmp_path / "s3" / "dry-run-bucket") == []
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+@pytest.mark.parametrize("dry_run,s3_size_only", [(0, 1), (1, 0), (None, None)])
+def test_bool_preferences_as_the_preferences_database_gives_them(tmp_path, dry_run, s3_size_only):
+    # the preferences database gives a bool preference as an int (and None if it was never set), and awsimple checks the types of its arguments
+    fake_s3 = FakeS3({"my-bucket": make_sync_result([])})
+
+    backup = run_s3_backup(tmp_path, fake_s3, make_preferences(tmp_path, dry_run=dry_run, s3_size_only=s3_size_only))
+
+    sync_kwargs = fake_s3.bucket_accesses["my-bucket"].sync_to_directory.call_args.kwargs
+    assert sync_kwargs["dry_run"] is bool(dry_run)
+    assert sync_kwargs["size_only"] is bool(s3_size_only)
+    assert backup.errors == []
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_real_backup_with_bool_preferences_as_the_preferences_database_gives_them(moto_s3_endpoint, tmp_path):
+    # with the real awsimple, whose sync and verification check the types of their arguments
+    s3_client = boto3.client("s3", endpoint_url=moto_s3_endpoint)
+    s3_client.create_bucket(Bucket="int-preferences-bucket")
+    s3_client.put_object(Bucket="int-preferences-bucket", Key="a.txt", Body=b"x" * 100, ChecksumAlgorithm="CRC64NVME")
+
+    dry_run_backup = run_real_s3_backup(tmp_path, dry_run=1, s3_size_only=0, s3_verify=1)
+    assert dry_run_backup.errors == []
+    assert "int-preferences-bucket : 1 files would be synced" in dry_run_backup.infos
+
+    backup = run_real_s3_backup(tmp_path, dry_run=0, s3_size_only=1, s3_verify=1)
+    assert backup.errors == []
+    assert "1 buckets, 1 backed up, 1 files synced, 0 excluded" in backup.infos
+    assert "verified 1 files in 1 buckets against S3, 0 differ" in backup.infos
