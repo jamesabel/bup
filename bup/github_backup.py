@@ -14,7 +14,7 @@ import time
 from typing import List, Optional
 
 import github3
-from github3.exceptions import AuthenticationFailed
+from github3.exceptions import AuthenticationFailed, GitHubError, TransportError
 from balsa import get_logger
 from typeguard import typechecked
 
@@ -153,18 +153,25 @@ class GithubBackup(BupBase):
         """
         Get the repositories the token can see.
 
-        :return: the repositories (github3 repository objects). None if the token was not accepted, which is reported as an error.
-          Without a login at all (e.g. no token is set) there are none, which is reported as a warning.
+        :return: the repositories (github3 repository objects). None if they could not be listed (the token was not accepted, GitHub
+          could not be reached, or GitHub refused), which is reported as an error. Without a login at all (e.g. no token is set)
+          there are none, which is reported as a warning.
         """
         try:
             gh = github3.login(token=token)
             if gh is None:
                 self.warning_out("could not login to github - check that a github token is set in preferences")
                 return []
-            return list(gh.repositories())  # this actually throws the authentication error
+            return list(gh.repositories())  # the first request to GitHub, so this is what raises
         except AuthenticationFailed:
             self.error_out("github authentication failed - check the github token in preferences")
-            return None
+        except TransportError as e:
+            # no response from GitHub at all, e.g. no internet connectivity
+            self.error_out(self.redact(f"could not reach github - check connectivity : {e}"))
+        except GitHubError as e:
+            # a response that is not the repositories, e.g. the rate limit is exceeded or GitHub has a server error
+            self.error_out(self.redact(f"could not list the github repositories : {e}"))
+        return None
 
     def run_backup(self):
         """
@@ -219,7 +226,12 @@ class GithubBackup(BupBase):
         """
         repo_owner_and_name = str(github_repo)
         repo_dir = Path(backup_dir, repo_owner_and_name).absolute()
-        branches = list(github_repo.branches())
+        try:
+            branches = list(github_repo.branches())  # a request to GitHub
+        except (TransportError, GitHubError) as e:
+            # e.g. connectivity was lost part way through the backup
+            self.error_out(self.redact(f"could not list the branches of {repo_owner_and_name} : {e}"))
+            return RepoOutcomes.failed
         clone_url = github_repo.clone_url  # tokenless - credentials go via the environment
 
         if repo_dir.exists() and self.pull_repo(repo_owner_and_name, branches, repo_dir, clone_url):

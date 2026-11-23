@@ -9,8 +9,10 @@ from typing import List, Optional
 from unittest.mock import call, patch, MagicMock
 
 import pytest
+import requests
 from git.exc import GitCommandError, InvalidGitRepositoryError
-from github3.exceptions import AuthenticationFailed
+from github3.exceptions import AuthenticationFailed, ServerError
+from github3.exceptions import ConnectionError as GitHubConnectionError  # not the builtin ConnectionError
 
 from bup import UITypes
 from bup.github_backup import GithubBackup, get_main_branch_name, is_excluded
@@ -121,6 +123,60 @@ def test_failed_authentication_is_an_error(github_backup, tmp_path):
 
     assert github_backup.errors == ["github authentication failed - check the github token in preferences"]
     run.clone.assert_not_called()
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_without_connectivity_the_repositories_can_not_be_listed_which_is_an_error(github_backup, tmp_path):
+    # the real github3, with no network under it: every request fails to connect (as it does without internet connectivity)
+    preferences = MagicMock(backup_directory=str(tmp_path), dry_run=False, github_token="test_token")
+    with (
+        patch("bup.github_backup.get_preferences", return_value=preferences),
+        patch("bup.github_backup.ExclusionPreferences") as mock_exclusions,
+        patch("bup.github_backup.shutil.which", return_value="git"),
+        patch("requests.Session.send", side_effect=requests.exceptions.ConnectionError("no route to api.github.com")) as mock_send,
+        patch("git.Repo.clone_from") as mock_clone,
+    ):
+        mock_exclusions.return_value.get_no_comments.return_value = []
+        github_backup.run()
+
+    mock_send.assert_called()  # github3 did try
+    assert len(github_backup.errors) == 1
+    assert github_backup.errors[0].startswith("could not reach github - check connectivity : ")
+    assert "no route to api.github.com" in github_backup.errors[0]
+    assert "test_token" not in github_backup.errors[0]
+    assert github_backup.error_count == 1
+    mock_clone.assert_not_called()
+    assert not any("repos" in info for info in github_backup.infos)  # the backup ended there
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_github_that_refuses_to_list_the_repositories_is_an_error(github_backup, tmp_path):
+    run = _Run(github_backup, tmp_path)
+    response = MagicMock(status_code=503)
+    response.json.return_value = {"message": "Service unavailable"}
+    run.login.repositories.side_effect = ServerError(response)
+
+    run.run()
+
+    assert github_backup.errors == ["could not list the github repositories : 503 Service unavailable"]
+    run.clone.assert_not_called()
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_repository_whose_branches_can_not_be_listed_is_an_error_and_the_backup_goes_on(github_backup, tmp_path):
+    # e.g. connectivity is lost part way through the backup
+    run = _Run(github_backup, tmp_path)
+    unreachable_repo = _github_repo("owner/unreachable")
+    unreachable_repo.branches.side_effect = GitHubConnectionError(requests.exceptions.ConnectionError("connection lost"))
+    run.github_repos = [unreachable_repo, _github_repo("owner/repo")]
+
+    run.run()
+
+    assert len(github_backup.errors) == 1
+    assert github_backup.errors[0].startswith("could not list the branches of owner/unreachable : ")
+    assert "connection lost" in github_backup.errors[0]
+    assert [clone_call.args[0] for clone_call in run.clone.call_args_list] == ["https://github.com/owner/repo.git"]
+    assert "2 repos, 0 pulls, 1 clones, 0 excluded" in github_backup.infos
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.

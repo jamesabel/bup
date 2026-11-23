@@ -333,10 +333,11 @@ class S3Backup(BupBase):
         backup_directory = os.path.join(preferences.backup_directory, "s3")
         os.makedirs(backup_directory, exist_ok=True)
 
-        s3_access = S3Access(**get_aws_access_kwargs(preferences))
         try:
+            s3_access = S3Access(**get_aws_access_kwargs(preferences))  # making the access raises if the AWS profile does not exist
             bucket_names = s3_access.bucket_list()
         except (ClientError, BotoCoreError) as e:
+            # BotoCoreError covers e.g. ProfileNotFound, NoCredentialsError and EndpointConnectionError
             self.error_out(f"could not list S3 buckets - check credentials and connectivity : {e}")
             return
         self.info_out(f"found {len(bucket_names)} buckets")
