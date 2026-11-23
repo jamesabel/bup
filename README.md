@@ -188,6 +188,16 @@ my-bucket : verified 120 of 120 files against S3 : 0 differ, 0 have a different 
 verified 120 files in 1 buckets against S3, 0 differ
 ```
 
+If S3 can no longer be reached during the verification (e.g. the internet connection drops), the verification ends
+there. When 3 files in a row can not be verified, bup asks S3 about the bucket: with no answer, those files and the
+ones that are left are one **error** for the bucket, and the buckets after it are not verified. With an answer, the
+files failed for reasons of their own and the verification goes on.
+
+```
+my-bucket : S3 could not be reached during the verification, which ended there : 80 of 120 files were not verified : Could not connect to the endpoint URL: "https://my-bucket.s3.us-west-2.amazonaws.com/"
+verified 40 files in 1 buckets against S3, 0 differ (S3 could not be reached, so the verification ended : 2 more buckets were not verified)
+```
+
 A dry run is not verified, and Stop ends the verification.
 
 ## S3 keys and local file names

@@ -65,7 +65,8 @@ def test_every_bucket_is_verified_after_the_backup_with_the_result_of_its_sync(t
     # awsimple verifies what the sync says is local, without listing the bucket again, and stops when the backup is stopped
     verify_call = fake_s3.bucket_accesses["my-bucket"].verify_directory.call_args
     assert verify_call.args == (Path(tmp_path, "s3", "my-bucket"),)
-    assert verify_call.kwargs == {"sync_result": fake_s3.sync_results["my-bucket"], "stop_event": backup.stop_event}
+    assert verify_call.kwargs["sync_result"] is fake_s3.sync_results["my-bucket"]
+    assert not verify_call.kwargs["stop_event"].is_set()  # the verification's own stop event (see test_s3_verify_unreachable.py)
     assert backup.errors == []
     assert backup.warnings == []
     summary_index = backup.infos.index("1 buckets, 1 backed up, 1 files synced, 0 excluded")
