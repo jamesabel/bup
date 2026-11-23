@@ -165,8 +165,8 @@ set in Preferences (`--verify` on the command line), bup also checks every file 
 up. It is off by default because it takes a while: it makes a request to S3 for the metadata of every object
 (AWS charges for these requests, about $0.0004 per 1000) and reads every local file to hash it, on every run.
 
-For every S3 object the sync says has a current local file (downloaded in this run, or already up to date), the
-local file is compared to the metadata of the S3 object:
+The verification is awsimple's `S3Access.verify_directory()`. For every S3 object the sync says has a current local
+file (downloaded in this run, or already up to date), the local file is compared to the metadata of the S3 object:
 
 - **Size.**
 - **Hash** of the contents, with the strongest hash of the whole object that S3 has: a SHA-512 (S3's own, or the
@@ -177,7 +177,8 @@ local file is compared to the metadata of the S3 object:
 - **Modification time.** A file gets the modification time of its S3 object when it is downloaded. Times within
   10 seconds are the same, to allow for the time resolutions of S3 and of file systems.
 
-A file that is missing or whose size or hash is not the S3 object's is an **error**. A file with the contents of
+A file that is missing or whose size or hash is not the S3 object's is an **error**, and so is a file that could not
+be verified (e.g. the metadata of its S3 object could not be had). A file with the contents of
 the S3 object but another modification time is a **warning** (e.g. with "size only" set, an object that was
 written to S3 again with the same size is not downloaded again). At most 20 files are named per bucket for each.
 Each bucket has a result line in the backup output, followed by a total:
