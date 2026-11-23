@@ -1,3 +1,7 @@
+"""
+The main window of the GUI: a dialog with a tab per function, which also runs the automatic backup schedule.
+"""
+
 from datetime import datetime, timedelta
 import ctypes
 import os
@@ -7,10 +11,15 @@ from PyQt5.QtGui import QCloseEvent, QIcon
 from PyQt5.QtCore import QTimer, Qt
 
 from bup import __application_name__, __version__, __author__, get_preferences, UITypes
+from bup.gui.gui_util import to_positive_int
 from bup.gui import PreferencesWidget, RunBackupWidget, LogWidget, TransferWidget, BupAbout, get_icon_path
 
 
 class BupDialog(QDialog):
+    """
+    The main window: the Backup, Preferences, Log, Transfer and About tabs.
+    """
+
     def __init__(self):
         super().__init__()
 
@@ -43,10 +52,10 @@ class BupDialog(QDialog):
         self.tab_widget.addTab(self.about_widget, "About")
 
         preferences = get_preferences(UITypes.gui)
-        width = preferences.width
-        height = preferences.height
-        if width is not None and width > 0 and height is not None and height > 0:
-            self.resize(preferences.width, preferences.height)
+        width = to_positive_int(preferences.width)
+        height = to_positive_int(preferences.height)
+        if width is not None and height is not None:
+            self.resize(width, height)  # as it was when bup was last closed
 
         self.autobackup_timer = QTimer()
         self.autobackup_timer.timeout.connect(self.autobackup_tick)
@@ -54,6 +63,10 @@ class BupDialog(QDialog):
         self.tick_count = 0
 
     def autobackup_tick(self):
+        """
+        Called once a second: show when the next automatic backup is (or that a backup is running), and start it when it is due.
+        A backup is due when the backup period has passed since the most recent backup, or right away if there has not been one.
+        """
         if self.preferences_widget.automatic_backup_enable_check_box.isChecked():
             backup_period = self.preferences_widget.automatic_backup_period.value()  # QSpinBox guarantees an int
             if backup_period <= 0:
@@ -87,6 +100,9 @@ class BupDialog(QDialog):
         self.tick_count += 1
 
     def closeEvent(self, close_event: QCloseEvent) -> None:
+        """
+        The window is being closed: ask first if a backup is running, then stop the backups and save the state of the GUI.
+        """
         if self.run_backup_widget.run_all.isRunning():
             msg_box = QMessageBox(self)
             msg_box.setWindowTitle("Backup In Progress")

@@ -1,17 +1,22 @@
+"""
+The GUI's "Transfer" tab: what each backup received over the network, and approximately what AWS charges for it.
+"""
+
 import sqlite3
 from datetime import datetime
 from typing import Dict, List, Tuple
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QGroupBox, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
 from balsa import get_logger
 
 from bup import BackupTypes, __application_name__
 from bup.aws_prices import get_cached_aws_prices
+from bup.gui.gui_util import get_local_time_string, make_row
 from bup.transfer import TransferRecord, transfer_emitter, get_transfer_total, format_size, format_cost
 
 log = get_logger(__application_name__)
 
-max_transfer_rows = 1000
+max_transfer_rows = 1000  # rows kept in the table (the lowest cost rows are dropped)
 
 columns = ["Time", "Backup", "Name", "Region", "Received", "Read units", "Approximate cost"]
 
@@ -90,12 +95,9 @@ class TransferWidget(QWidget):
 
         # one row per transfer, highest cost first
         self.row_records: List[TransferRecord] = []  # the transfer record of each table row, in row order
-        self.controls_widget = QWidget()
-        self.controls_widget.setLayout(QHBoxLayout())
         self.clear_button = QPushButton("Clear")
         self.clear_button.clicked.connect(self.clear)
-        self.controls_widget.layout().addWidget(self.clear_button)
-        self.controls_widget.layout().addStretch()
+        self.controls_widget = make_row(self.clear_button)
         self.layout().addWidget(self.controls_widget)
         # every column is as wide as its contents, and an empty spacer column on the far right takes up the remaining width
         self.table = QTableWidget(0, len(columns) + 1)
@@ -110,9 +112,12 @@ class TransferWidget(QWidget):
         transfer_emitter.transfer_signal.connect(self.add_transfer_record)
 
     def add_transfer_record(self, transfer_record: TransferRecord):
+        """
+        Add a transfer that a backup reported to the table and the totals. Connected to the transfer signal, so it runs in the GUI thread.
+        """
         self.transfer_records[transfer_record.backup_type].append(transfer_record)
         row_text = [
-            datetime.now().astimezone().isoformat(timespec="seconds"),
+            get_local_time_string("seconds"),
             transfer_record.backup_type.name,
             transfer_record.name,
             transfer_record.region or "",
@@ -136,9 +141,15 @@ class TransferWidget(QWidget):
         self.update_prices()  # the backup that reported this may have just fetched prices
 
     def update_prices(self):
+        """
+        Show the AWS prices as they are now in the price cache.
+        """
         self.prices_label.setText(get_prices_text())
 
     def update_totals(self):
+        """
+        Show the total of each backup type and the grand total.
+        """
         for backup_type in BackupTypes:
             total = get_transfer_total(backup_type, self.transfer_records[backup_type])
             self.total_labels[backup_type].setText(f"{backup_type.name} {total}")
@@ -146,6 +157,9 @@ class TransferWidget(QWidget):
         self.grand_total_label.setText(str(get_transfer_total(None, all_transfer_records, "Grand total")))
 
     def clear(self):
+        """
+        Empty the table and start the totals again from zero.
+        """
         for backup_type in BackupTypes:
             self.transfer_records[backup_type] = []
         self.row_records = []

@@ -1,22 +1,31 @@
+"""
+The GUI's "Log" tab: the application log, in a pane per log source.
+"""
+
 import logging
 
 from PyQt5.QtCore import QObject, pyqtSignal, Qt
 from PyQt5.QtGui import QFontDatabase
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPlainTextEdit, QPushButton, QGroupBox, QSplitter
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPlainTextEdit, QPushButton, QGroupBox, QSplitter
 from balsa import get_logger
 
 from bup import __application_name__
 from bup.log_routing import LogSources, get_log_source, log_line_format
 from bup.gui import get_gui_preferences
+from bup.gui.gui_util import make_row
 
 log = get_logger(__application_name__)
 
-max_log_lines = 10000
+max_log_lines = 10000  # lines kept in a log pane (the oldest are dropped)
 
 minimum_pane_height = 50  # pixels
 
 
 class QtLogEmitter(QObject):
+    """
+    Has the signal that carries log lines to the GUI thread (a logging.Handler is not a QObject, so it can not have one itself).
+    """
+
     log_line_signal = pyqtSignal(str, str)  # (LogSources value, formatted log line)
 
 
@@ -61,13 +70,9 @@ class LogWidget(QWidget):
         super().__init__()
         self.setLayout(QVBoxLayout())
 
-        self.controls_widget = QWidget()
-        self.controls_layout = QHBoxLayout()
-        self.controls_widget.setLayout(self.controls_layout)
         self.clear_button = QPushButton("Clear")
-        self.controls_layout.addWidget(self.clear_button)
-        self.controls_layout.addStretch()
         self.clear_button.clicked.connect(self.clear)
+        self.controls_widget = make_row(self.clear_button)
 
         self.splitter = QSplitter(Qt.Vertical)
         self.log_panes = {}
@@ -86,14 +91,23 @@ class LogWidget(QWidget):
         self.restore_state()
 
     def get_pane_height_key(self, log_source: LogSources) -> str:
+        """
+        :return: the name of the preference that the height of a log source's pane is saved as
+        """
         return f"log_pane_{log_source.name}_height"
 
     def save_state(self):
+        """
+        Save the heights of the panes, for the next time bup is run.
+        """
         preferences = get_gui_preferences()
         for log_source, pane_height in zip(LogSources, self.splitter.sizes()):
             setattr(preferences, self.get_pane_height_key(log_source), pane_height)
 
     def restore_state(self):
+        """
+        Restore the heights of the panes that save_state() saved.
+        """
         preferences = get_gui_preferences()
         pane_heights = []
         for log_source in LogSources:
@@ -105,9 +119,15 @@ class LogWidget(QWidget):
         self.splitter.setSizes(pane_heights)
 
     def append_log_line(self, log_source_value: str, line: str):
+        """
+        Add a log line to the pane of its log source. Connected to the log handler's signal, so it runs in the GUI thread.
+        """
         self.log_panes[LogSources(log_source_value)].text_box.appendPlainText(line)
 
     def clear(self):
+        """
+        Empty every pane.
+        """
         for log_pane in self.log_panes.values():
             log_pane.text_box.clear()
 

@@ -1,3 +1,7 @@
+"""
+The entry point of bup: the GUI when run without command line arguments, the CLI otherwise.
+"""
+
 from ismain import is_main
 
 from bup import arguments
@@ -6,11 +10,14 @@ from bup.gui import gui_main
 
 
 def main():
+    """
+    Run bup, as the GUI or the CLI.
+    """
     args = arguments()
     if args is None:
         gui_main()
     else:
-        # if we've not been given anything to do on the command line, then it must be CLI
+        # there are command line arguments, so this is the CLI
         cli_main(args)
 
 

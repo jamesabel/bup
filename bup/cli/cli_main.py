@@ -1,3 +1,7 @@
+"""
+The command line interface of bup: runs the backups asked for on the command line and prints their output.
+"""
+
 import sys
 
 from balsa import Balsa, get_logger
@@ -21,6 +25,12 @@ def _console_error(s: str):
 
 
 def cli_main(args):
+    """
+    Run the backups the command line asks for, all at the same time, and wait for them. The command line's options are written to
+    the CLI's preferences, which is where the backups read them. Exits with status 1 if a backup reported an error.
+
+    :param args: the parsed command line (see arguments())
+    """
 
     ui_type = UITypes.cli
 

@@ -102,6 +102,10 @@ def get_transfer_total(backup_type: Optional[BackupTypes], transfer_records: Ite
 
 
 class TransferEmitter(QObject):
+    """
+    Has the signal that carries transfer records from the backups to the GUI's Transfer tab.
+    """
+
     transfer_signal = pyqtSignal(object)  # a TransferRecord
 
 

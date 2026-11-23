@@ -107,3 +107,19 @@ def make_s3_backup() -> S3Backup:
     backup.warnings = warnings
     backup.errors = errors
     return backup
+
+
+def run_real_s3_backup(backup_directory: Path, **preferences) -> S3Backup:
+    """
+    Run an S3 backup with the real awsimple S3Access, against the local S3 server of the moto_s3_endpoint fixture (see conftest.py).
+    :param preferences: the preferences that are not the defaults of make_preferences(), e.g. dry_run=True
+    :return: the backup, with what it put out in .infos, .warnings and .errors
+    """
+    backup = make_s3_backup()
+    with (
+        patch("bup.s3_backup.get_preferences", return_value=make_preferences(backup_directory, **preferences)),
+        patch("bup.s3_backup.ExclusionPreferences") as mock_exclusions,
+    ):
+        mock_exclusions.return_value.get_no_comments.return_value = []
+        backup.run()
+    return backup
