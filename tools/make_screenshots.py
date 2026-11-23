@@ -1,7 +1,7 @@
 """
 Make the README's screen captures (doc/screenshots/*.png) of the bup GUI showing synthetic data.
 
-Run from the project root with the project's virtual environment:  venv\\Scripts\\python.exe tools\\make_screenshots.py
+Run from the project root with the project's virtual environment:  .venv\\Scripts\\python.exe tools\\make_screenshots.py
 
 Nothing here reads or writes the real preferences, exclusions or AWS price cache, contacts AWS or GitHub, or runs a backup:
 the GUI is given stand-ins for all of them, and every name, size and price shown is made up.

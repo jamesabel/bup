@@ -1,6 +1,6 @@
 [run]
 omit =
-    venv/*
+    .venv/*
     test*/*
 
 [report]

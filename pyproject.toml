@@ -121,4 +121,4 @@ missing-union-attribute = "warn"  # an Optional backup type in transfer_widget.p
 unsupported-operator = "warn"  # an Optional cost in transfer.py
 
 [tool.pytest.ini_options]
-norecursedirs = "app build dist .git .pytest_cache venv .venv"
+norecursedirs = "app build dist .git .pytest_cache .venv"
