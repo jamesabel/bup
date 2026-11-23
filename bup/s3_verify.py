@@ -12,9 +12,10 @@ from awscrt import checksums
 from awsimple import S3ObjectMetadata, get_file_crc64nvme
 from awsimple.s3_object import native_checksum_to_hex
 
-# A local file gets the modification time of its S3 object when it is downloaded. S3 gives that time to the second in an object's
-# metadata and more precisely in a bucket listing, and some file systems keep times to 2 seconds, so times this close are the same.
-mtime_abs_tol = 2.0  # seconds
+# A local file gets the modification time of its S3 object when it is downloaded, but not every clock in between has the same
+# resolution: S3 gives the time to the second in an object's metadata and more precisely in a bucket listing, and file systems keep
+# times to anything from 100 nanoseconds (NTFS) to 2 seconds (FAT). Times within this window are taken as the same.
+mtime_abs_tol = 3.0  # seconds
 
 read_size = 1024 * 1024  # bytes read from a file at a time
 

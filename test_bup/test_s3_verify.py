@@ -10,7 +10,7 @@ import os
 import sys
 import urllib.request
 import zlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 from unittest.mock import patch, MagicMock
@@ -25,7 +25,7 @@ from bup import arguments
 from bup.cli.cli_main import cli_main
 from bup.gui.preferences_widget import PreferencesWidget
 from bup.s3_backup import max_keys_to_list
-from bup.s3_verify import get_s3_object_hash, verify_local_file
+from bup.s3_verify import get_s3_object_hash, mtime_abs_tol, verify_local_file
 
 from .s3_sync_fakes import FakeS3, downloaded, make_preferences, make_s3_backup, make_sync_result, run_s3_backup
 
@@ -155,10 +155,18 @@ def test_mtime_that_differs(tmp_path):
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
-def test_mtime_within_the_tolerance_is_the_same(tmp_path):
-    local_path = _write_file(tmp_path / "a.txt", mtime=datetime(2026, 11, 20, 12, 0, 1, tzinfo=timezone.utc))
+def test_mtime_within_the_window_is_the_same(tmp_path):
+    # the window allows for the time resolutions of S3 and of file systems (e.g. 2 seconds on FAT)
+    assert mtime_abs_tol == 3.0
+    s3_object_metadata = _make_metadata(metadata_sha512=_sha512())
 
-    assert verify_local_file(local_path, _make_metadata(metadata_sha512=_sha512())).mtime_difference is None
+    for seconds in (-3, -2, 2, 3):
+        local_path = _write_file(tmp_path / "a.txt", mtime=s3_mtime + timedelta(seconds=seconds))
+        assert verify_local_file(local_path, s3_object_metadata).mtime_difference is None
+
+    for seconds in (-4, 4):
+        local_path = _write_file(tmp_path / "a.txt", mtime=s3_mtime + timedelta(seconds=seconds))
+        assert verify_local_file(local_path, s3_object_metadata).mtime_difference == f"the local file was modified {seconds:+d} seconds from the S3 object (2026-11-20T12:00:00+00:00)"
 
 
 def _run_verified_backup(tmp_path: Path, fake_s3: FakeS3, sync_objects: list, **preferences):
