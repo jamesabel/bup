@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 from unittest.mock import patch, MagicMock
 
-from awsimple import S3SyncObject, S3SyncOutcome, S3SyncResult
+from awsimple import AWSimpleException, S3ObjectMetadata, S3SyncObject, S3SyncOutcome, S3SyncResult
 
 from bup import UITypes
 from bup.s3_backup import S3Backup
@@ -25,8 +25,17 @@ def head_bucket_response(bucket_region: str) -> dict:
     return {"BucketRegion": bucket_region, "ResponseMetadata": {"HTTPHeaders": {"x-amz-bucket-region": bucket_region}}}
 
 
-def make_preferences(tmp_path: Path, dry_run: bool = False, s3_size_only: bool = False, aws_region: Optional[str] = None) -> MagicMock:
-    return MagicMock(backup_directory=str(tmp_path), dry_run=dry_run, s3_size_only=s3_size_only, aws_profile=None, aws_access_key_id=None, aws_secret_access_key=None, aws_region=aws_region)
+def make_preferences(tmp_path: Path, dry_run: bool = False, s3_size_only: bool = False, aws_region: Optional[str] = None, s3_verify: bool = False) -> MagicMock:
+    return MagicMock(
+        backup_directory=str(tmp_path),
+        dry_run=dry_run,
+        s3_size_only=s3_size_only,
+        s3_verify=s3_verify,
+        aws_profile=None,
+        aws_access_key_id=None,
+        aws_secret_access_key=None,
+        aws_region=aws_region,
+    )
 
 
 class FakeS3:
@@ -40,12 +49,15 @@ class FakeS3:
         self.sync_results = sync_results
         self.bucket_region = bucket_region
         self.bucket_accesses: Dict[str, MagicMock] = {}
+        # the metadata of the objects (or the exception that getting it raises), by key, for a verification of the local files against S3
+        self.object_metadata: Dict[str, Union[S3ObjectMetadata, Exception]] = {}
         self.bucket_access_kwargs: Dict[str, dict] = {}
 
     def __call__(self, bucket_name: Optional[str] = None, **kwargs) -> MagicMock:
         s3_access = MagicMock()
         s3_access.bucket_list.return_value = list(self.sync_results)
         s3_access.client.head_bucket.return_value = head_bucket_response(self.bucket_region)
+        s3_access.get_s3_object_metadata.side_effect = self.get_s3_object_metadata
         if bucket_name is not None:
             sync_result = self.sync_results[bucket_name]
             if isinstance(sync_result, Exception) or callable(sync_result):
@@ -58,6 +70,13 @@ class FakeS3:
             self.bucket_accesses[bucket_name] = s3_access
             self.bucket_access_kwargs[bucket_name] = kwargs
         return s3_access
+
+    def get_s3_object_metadata(self, s3_key: str) -> S3ObjectMetadata:
+        if s3_key not in self.object_metadata:
+            raise AWSimpleException(f"{s3_key=} does not exist")
+        if isinstance(object_metadata := self.object_metadata[s3_key], Exception):
+            raise object_metadata
+        return object_metadata
 
 
 def run_s3_backup(
