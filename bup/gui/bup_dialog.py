@@ -99,9 +99,11 @@ class BupDialog(QDialog):
             self.run_backup_widget.countdown_text.setText("(automatic backup not enabled)")
         self.tick_count += 1
 
-    def closeEvent(self, close_event: QCloseEvent) -> None:
+    def closeEvent(self, a0: QCloseEvent) -> None:
         """
         The window is being closed: ask first if a backup is running, then stop the backups and save the state of the GUI.
+
+        :param a0: the close event (the name is the one PyQt5 gives this parameter of QDialog.closeEvent)
         """
         if self.run_backup_widget.run_all.isRunning():
             msg_box = QMessageBox(self)
@@ -115,7 +117,7 @@ class BupDialog(QDialog):
             msg_box.exec_()
 
             if msg_box.clickedButton() == cancel_button:
-                close_event.ignore()
+                a0.ignore()
                 return
 
         self.autobackup_timer.stop()

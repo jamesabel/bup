@@ -38,25 +38,27 @@ class PreferencesLineEdit(QLineEdit):
         if preference_name is not None:
             self.textChanged.connect(self.save)
 
-    def setText(self, s: Optional[str]):
-        # tolerate None
-        if s is not None:
-            super().setText(s)
+    def setText(self, a0: Optional[str]):
+        # tolerate None (a0 is the name PyQt5 gives this parameter of QLineEdit.setText)
+        if a0 is not None:
+            super().setText(a0)
 
     def text(self):
         return super().text().strip()
 
     def load(self, preferences):
         """
-        Show the preference this is bound to.
+        Show the preference this is bound to (nothing to show if it is not bound to one).
         """
-        self.setText(getattr(preferences, self.preference_name))
+        if self.preference_name is not None:
+            self.setText(getattr(preferences, self.preference_name))
 
     def save(self):
         """
-        Write the text to the preference this is bound to.
+        Write the text to the preference this is bound to (nothing to write if it is not bound to one).
         """
-        setattr(get_gui_preferences(), self.preference_name, self.text())
+        if self.preference_name is not None:
+            setattr(get_gui_preferences(), self.preference_name, self.text())
 
 
 class PreferenceCheckBox(QCheckBox):
@@ -116,7 +118,8 @@ class PreferencesWidget(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.setLayout(QVBoxLayout())
+        layout = QVBoxLayout()
+        self.setLayout(layout)
 
         # backup directory
         self.backup_directory_line_edit = PreferencesLineEdit("backup_directory")
@@ -202,7 +205,7 @@ class PreferencesWidget(QWidget):
         for check_box in (self.dry_run_check_box, self.s3_size_only_check_box, self.s3_verify_check_box, self.verbose_check_box):
             self.layout().addWidget(check_box)
 
-        self.layout().addStretch()  # bottom padding
+        layout.addStretch()  # bottom padding
 
         # the widgets that are bound to a preference of their own
         self.preference_widgets = [

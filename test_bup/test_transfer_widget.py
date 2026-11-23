@@ -233,3 +233,12 @@ def test_clear(transfer_widget):
 
     assert transfer_widget.table.rowCount() == 0
     assert transfer_widget.total_labels[BackupTypes.S3].text() == "S3 transfer total : received 0 B"
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_a_total_is_not_a_transfer_that_can_be_added(transfer_widget):
+    # a record with no backup type is a total across the backup types, which no backup reports
+    with pytest.raises(ValueError, match="grand total"):
+        transfer_widget.add_transfer_record(TransferRecord(None, "grand total", 2048))
+
+    assert transfer_widget.table.rowCount() == 0

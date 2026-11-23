@@ -16,10 +16,11 @@ def make_row(*items: Union[QWidget, str]) -> QWidget:
     :return: the row
     """
     row = QWidget()
-    row.setLayout(QHBoxLayout())
+    layout = QHBoxLayout()
+    row.setLayout(layout)
     for item in items:
-        row.layout().addWidget(QLabel(item) if isinstance(item, str) else item)
-    row.layout().addStretch()
+        layout.addWidget(QLabel(item) if isinstance(item, str) else item)
+    layout.addStretch()
     return row
 
 

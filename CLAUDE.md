@@ -64,7 +64,7 @@ python -m bup <path> -s    # CLI with S3 backup
 
 - ruff formatter with **192-character line length**
 - ruff lint: pycodestyle and pyflakes (`E`, `F`, `W`), ignoring E402, E501 and F401 (`[tool.ruff]` in `pyproject.toml`)
-- ty type checks the `bup` package (`[tool.ty]` in `pyproject.toml`). What it found when it was introduced is reported as warnings, which do not fail the check; anything else does. Fix a warning rather than add to them, and remove a rule from the `warn` list once its warnings are gone
+- ty type checks the `bup` package (`[tool.ty]` in `pyproject.toml`). The check passes with nothing reported: fix what it finds, and keep `# ty: ignore[rule]` (with the reason in a comment) for what ty gets wrong, such as the `Balsa(...)` calls
 - Runtime type checking via `@typechecked()` decorator from typeguard
 - Every module, class and public function has a docstring (reST-style `:param:` / `:return:` where they add something)
 - Windows-specific path handling in `robust_os_calls.py` (long paths with `\\?\` prefix, readonly removal, retry logic for filesystem ops)

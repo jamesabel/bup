@@ -27,6 +27,13 @@ def get_transfer_out_cost(byte_count: int, aws_prices: Optional[AWSPrices]) -> O
     """
     if aws_prices is None:
         return None
+    return _transfer_out_cost(byte_count, aws_prices)
+
+
+def _transfer_out_cost(byte_count: int, aws_prices: AWSPrices) -> float:
+    """
+    Approximate USD cost of data transfer out to the internet, at a region's prices.
+    """
     return byte_count / bytes_per_gb * aws_prices.transfer_out_price_per_gb
 
 
@@ -37,7 +44,7 @@ def get_dynamodb_scan_cost(byte_count: int, read_units: float, aws_prices: Optio
     """
     if aws_prices is None:
         return None
-    return get_transfer_out_cost(byte_count, aws_prices) + read_units / read_units_per_million * aws_prices.dynamodb_read_price_per_million_units
+    return _transfer_out_cost(byte_count, aws_prices) + read_units / read_units_per_million * aws_prices.dynamodb_read_price_per_million_units
 
 
 def format_size(byte_count: int) -> str:

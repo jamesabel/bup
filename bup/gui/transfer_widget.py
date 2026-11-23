@@ -115,10 +115,13 @@ class TransferWidget(QWidget):
         """
         Add a transfer that a backup reported to the table and the totals. Connected to the transfer signal, so it runs in the GUI thread.
         """
-        self.transfer_records[transfer_record.backup_type].append(transfer_record)
+        backup_type = transfer_record.backup_type
+        if backup_type is None:
+            raise ValueError(f'"{transfer_record.name}" has no backup type: it is a total, not the transfer of a backup')
+        self.transfer_records[backup_type].append(transfer_record)
         row_text = [
             get_local_time_string("seconds"),
-            transfer_record.backup_type.name,
+            backup_type.name,
             transfer_record.name,
             transfer_record.region or "",
             format_size(transfer_record.received_bytes),
