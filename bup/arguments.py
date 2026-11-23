@@ -26,7 +26,6 @@ def arguments():
         sys.exit()
 
     if len(sys.argv) > 1:
-
         parser = argparse.ArgumentParser(
             prog=__application_name__,
             description=__description__,

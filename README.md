@@ -17,8 +17,8 @@
     <a href="https://github.com/jamesabel/bup/blob/main/LICENSE">
         <img src="https://img.shields.io/pypi/l/bup" alt="license" />
     </a>
-    <a href="https://github.com/psf/black">
-        <img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="code style: black" />
+    <a href="https://github.com/astral-sh/ruff">
+        <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="code style: ruff" />
     </a>
 </p>
 
