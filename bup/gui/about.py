@@ -35,7 +35,6 @@ class BupAbout(QWidget):
             gpl_text = ""
 
         if license_path is not None and license_path.exists() and license_path.is_file():
-
             about_text = f"### BUP ({__version__})\n\n"
             about_text += f"Python version: {platform.python_version()}\n\n"  # the Python this application is running on
             about_text += license_path.read_text()

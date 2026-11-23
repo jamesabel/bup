@@ -39,19 +39,17 @@ dependencies = [
     "sentry-sdk",
 ]
 
-[project.optional-dependencies]
+# Development tools, installed by "uv sync" (tools\make_venv.bat) but not part of the published package.
+[dependency-groups]
 dev = [
-    "wheel",
-    "black",
     "pytest",
     "moto[server]",
     "coverage",
     "pytest-cov",
     "pyship",
-    "flake8",
+    "ruff",
+    "ty",
     "PyQt5-stubs",
-    "build",
-    "twine",
 ]
 
 [project.urls]
@@ -87,5 +85,40 @@ certificate_sha1 = "6AE7810A68EABB5C80E7DD85BAE500AA4EDA5DE1"
 # registry settings pyship is using has been flagging a false positve on Windows defender so don't use run_on_startup for now
 run_on_startup = false
 
+[tool.uv]
+# Windows must be installable from wheels: the newest pyqt5-qt5 releases have no Windows wheel, and without this uv
+# resolves to one of them (pip picks the last release that has one, 5.15.2).
+required-environments = ["sys_platform == 'win32' and platform_machine == 'AMD64'"]
+
+[tool.ruff]
+line-length = 192
+
+[tool.ruff.lint]
+# pycodestyle errors and warnings and pyflakes, as flake8 checked
+select = ["E", "F", "W"]
+# E402 module level import not at top of file
+# E501 line too long
+# F401 imported but unused
+ignore = ["E402", "E501", "F401"]
+
+[tool.ty.terminal]
+# warnings (see the rules below) do not fail the type check, errors do
+error-on-warning = false
+
+[tool.ty.src]
+# the package only: the tests replace attributes with stand-ins all over, which a type checker rejects
+include = ["bup"]
+
+# What ty found in bup when it was introduced (14 diagnostics, 2026-11) is reported as warnings until it is fixed, so the type
+# check passes and anything else it finds fails it. Remove a rule from here once its warnings are gone.
+[tool.ty.rules]
+too-many-positional-arguments = "warn"  # Balsa(...) in cli_main.py and gui_main.py
+unknown-argument = "warn"  # Balsa(...) in gui_main.py, and sentry_sdk.init(profiles_sample_rate=), which sentry-sdk 3 rejects
+lost-keyword-for-regular-parameter = "warn"  # closeEvent() in bup_dialog.py, setText() in preferences_widget.py
+missing-attribute = "warn"  # layout().addStretch() in gui_util.py and preferences_widget.py
+invalid-argument-type = "warn"  # an Optional preference name or backup type, in preferences_widget.py and transfer_widget.py
+missing-union-attribute = "warn"  # an Optional backup type in transfer_widget.py
+unsupported-operator = "warn"  # an Optional cost in transfer.py
+
 [tool.pytest.ini_options]
-norecursedirs = "app build dist .git .pytest_cache venv"
+norecursedirs = "app build dist .git .pytest_cache venv .venv"
