@@ -101,24 +101,9 @@ select = ["E", "F", "W"]
 # F401 imported but unused
 ignore = ["E402", "E501", "F401"]
 
-[tool.ty.terminal]
-# warnings (see the rules below) do not fail the type check, errors do
-error-on-warning = false
-
 [tool.ty.src]
 # the package only: the tests replace attributes with stand-ins all over, which a type checker rejects
 include = ["bup"]
 
-# What ty found in bup when it was introduced (14 diagnostics, 2026-11) is reported as warnings until it is fixed, so the type
-# check passes and anything else it finds fails it. Remove a rule from here once its warnings are gone.
-[tool.ty.rules]
-too-many-positional-arguments = "warn"  # Balsa(...) in cli_main.py and gui_main.py
-unknown-argument = "warn"  # Balsa(...) in gui_main.py, and sentry_sdk.init(profiles_sample_rate=), which sentry-sdk 3 rejects
-lost-keyword-for-regular-parameter = "warn"  # closeEvent() in bup_dialog.py, setText() in preferences_widget.py
-missing-attribute = "warn"  # layout().addStretch() in gui_util.py and preferences_widget.py
-invalid-argument-type = "warn"  # an Optional preference name or backup type, in preferences_widget.py and transfer_widget.py
-missing-union-attribute = "warn"  # an Optional backup type in transfer_widget.py
-unsupported-operator = "warn"  # an Optional cost in transfer.py
-
 [tool.pytest.ini_options]
-norecursedirs = "app build dist .git .pytest_cache venv .venv"
+norecursedirs = "app build dist .git .pytest_cache .venv"

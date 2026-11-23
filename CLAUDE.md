@@ -8,7 +8,7 @@ bup is a cross-platform backup utility for AWS S3 buckets, AWS DynamoDB tables, 
 
 ## Common Commands
 
-All commands are Windows batch scripts in the `tools` directory (except `bup.bat`, which runs the application and is in the project root). Each one changes to the project root itself, so it can be run from anywhere. The project is managed with [uv](https://docs.astral.sh/uv/): the dependencies and the development tools (the `dev` dependency group) are in `pyproject.toml`, and `uv.lock` is not checked in. The virtual environment is `venv` (not uv's default `.venv` - pyship looks for the project's Python there) and uses Python 3.15 (`requires-python` stays at 3.13, the minimum CI tests).
+All commands are Windows batch scripts in the `tools` directory (except `bup.bat`, which runs the application and is in the project root). Each one changes to the project root itself, so it can be run from anywhere. The project is managed with [uv](https://docs.astral.sh/uv/): the dependencies and the development tools (the `dev` dependency group) are in `pyproject.toml`, and `uv.lock` is not checked in. The virtual environment is `.venv` and uses Python 3.15 (`requires-python` stays at 3.13, the minimum CI tests).
 
 ```bash
 # Create virtual environment (uv sync, with the newest version of every dependency)
@@ -16,10 +16,10 @@ tools\make_venv.bat
 
 # Run tests with coverage
 tools\coverage.bat
-# Equivalent to: set PYTHONPATH=%CD% && venv\Scripts\pytest.exe --cov-report=html --cov
+# Equivalent to: set PYTHONPATH=%CD% && .venv\Scripts\pytest.exe --cov-report=html --cov
 
 # Run a single test
-venv\Scripts\pytest.exe test_bup\test_preferences.py::test_preferences
+.venv\Scripts\pytest.exe test_bup\test_preferences.py::test_preferences
 
 # Format code (ruff format, 192-char line length)
 tools\format.bat
@@ -34,7 +34,7 @@ tools\run_ty.bat
 tools\build.bat
 
 # Regenerate the README's screen captures (synthetic data, doc/screenshots/*.png) after a GUI change
-venv\Scripts\python.exe tools\make_screenshots.py
+.venv\Scripts\python.exe tools\make_screenshots.py
 
 # Run the application
 tools\bup.bat                  # GUI (no args)
@@ -64,7 +64,7 @@ python -m bup <path> -s    # CLI with S3 backup
 
 - ruff formatter with **192-character line length**
 - ruff lint: pycodestyle and pyflakes (`E`, `F`, `W`), ignoring E402, E501 and F401 (`[tool.ruff]` in `pyproject.toml`)
-- ty type checks the `bup` package (`[tool.ty]` in `pyproject.toml`). What it found when it was introduced is reported as warnings, which do not fail the check; anything else does. Fix a warning rather than add to them, and remove a rule from the `warn` list once its warnings are gone
+- ty type checks the `bup` package (`[tool.ty]` in `pyproject.toml`). The check passes with nothing reported: fix what it finds, and keep `# ty: ignore[rule]` (with the reason in a comment) for what ty gets wrong, such as the `Balsa(...)` calls
 - Runtime type checking via `@typechecked()` decorator from typeguard
 - Every module, class and public function has a docstring (reST-style `:param:` / `:return:` where they add something)
 - Windows-specific path handling in `robust_os_calls.py` (long paths with `\\?\` prefix, readonly removal, retry logic for filesystem ops)

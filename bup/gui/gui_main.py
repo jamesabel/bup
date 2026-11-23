@@ -24,12 +24,14 @@ def gui_main():
     Run the GUI: set up logging (and Sentry, if the environment asks for it), show the main window and run until it is closed.
     """
 
-    balsa = Balsa(__application_name__, __author__, gui=True, verbose=get_gui_preferences().verbose)
+    # Balsa is an attrs class in the older "@attrs" spelling, which ty does not take for one (it sees a class with no arguments)
+    balsa = Balsa(__application_name__, __author__, gui=True, verbose=get_gui_preferences().verbose)  # ty: ignore[too-many-positional-arguments, unknown-argument]
     balsa.use_sentry = to_bool_strict(os.environ.get("USE_SENTRY", "false"))
     if balsa.use_sentry:
         sentry_dsn = os.getenv("SENTRY_SDK_DSN", "")
         if sentry_dsn:
-            sentry_sdk.init(dsn=sentry_dsn, traces_sample_rate=1.0, profiles_sample_rate=1.0)
+            # every transaction is traced, and profiled for as long as it runs
+            sentry_sdk.init(dsn=sentry_dsn, traces_sample_rate=1.0, profile_session_sample_rate=1.0, profile_lifecycle="trace")
             balsa.sentry_dsn = sentry_dsn
     balsa.init_logger()
 
