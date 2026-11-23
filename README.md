@@ -136,9 +136,10 @@ At most 20 objects are named per bucket for each of these, followed by how many 
 
 ## Verification
 
-After a bucket is synced, bup adds up the size of the local backup directory and compares it to the total size of the
-S3 objects the sync says are backed up (downloaded in this run, or already up to date). This is a check of the whole
-directory that does not depend on the sync itself. There are three outcomes:
+After a bucket is synced, bup lists the bucket again with boto3 (a listing of its own, not the sync's) and compares
+the bucket's total size in bytes to the total size of the local backup directory. The objects the sync reported as
+not downloaded (see above) are left out of the S3 total, since they have already been reported. If the bucket can
+not be listed, that is an **error** and the bucket is not verified. Otherwise there are three outcomes:
 
 - **S3 is larger than the local backup** - something that should be there is not. This is reported as an **error**.
 - **Local backup is larger than S3** - expected over time, since deletions in S3 are retained locally. Logged as

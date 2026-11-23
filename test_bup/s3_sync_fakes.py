@@ -52,6 +52,9 @@ class FakeS3:
                 s3_access.sync_to_directory.side_effect = sync_result  # raised, or called as the sync and its return value is the result
             else:
                 s3_access.sync_to_directory.return_value = sync_result
+                # the listing of the bucket that verifies the sync: the objects of the sync result
+                contents = [{"Key": sync_object.key, "Size": sync_object.size} for sync_object in sync_result.objects.values()]
+                s3_access.client.get_paginator.return_value.paginate.return_value = [{"Contents": contents}]
             self.bucket_accesses[bucket_name] = s3_access
             self.bucket_access_kwargs[bucket_name] = kwargs
         return s3_access

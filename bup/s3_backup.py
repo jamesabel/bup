@@ -36,6 +36,21 @@ def get_dir_size(dir_path: Path) -> Tuple[int, int]:
     return dir_size, file_count
 
 
+def get_bucket_size(s3_client, bucket_name: str) -> Tuple[int, int]:
+    """
+    Total size (bytes) and object count of an S3 bucket, from a listing of the bucket with the boto3 client.
+    :return: (total_size, object_count)
+    """
+    total_size = 0
+    object_count = 0
+    paginator = s3_client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket_name):
+        for s3_object in page.get("Contents", []):  # an empty bucket (or page) has no "Contents"
+            total_size += s3_object["Size"]
+            object_count += 1
+    return total_size, object_count
+
+
 def is_folder_marker(sync_object: S3SyncObject) -> bool:
     """
     True for an object whose key ends in "/" (e.g. from the S3 console's "Create folder"). It is not a file, so a sync never downloads it,
@@ -62,7 +77,7 @@ def get_bucket_region(s3_client, bucket_name: str) -> Optional[str]:
 def compare_backup_sizes(s3_total_size: int, local_size: int) -> Tuple[str, str]:
     """
     Rough check that the sync worked, based on total sizes.
-    :param s3_total_size: total size of the S3 objects that the sync says have a current local file
+    :param s3_total_size: total size of the S3 objects that have to be in the local backup
     :param local_size: total size of the local backup of the bucket
     :return: (level, message) where level is "error" or "info"
     """
@@ -185,16 +200,23 @@ class S3Backup(BupBase):
             if self.stop_requested:
                 break  # the downloads that had not started were not attempted, so there is nothing to verify
 
-            # verify that the objects the sync says are backed up (downloaded now or already up to date) are in the local backup
+            # Verify the sync with a listing of the bucket of our own (not the sync's): everything in the bucket, other than the objects the
+            # sync reported as not downloaded (which have been reported above), has to be in the local backup.
+            try:
+                s3_total_size, s3_object_count = get_bucket_size(bucket_access.client, bucket_name)
+            except (ClientError, BotoCoreError) as e:
+                self.error_out(f"could not list contents of {bucket_name} to verify the sync : {e}")
+                continue
+
             if not failed:
                 count += 1
-            backed_up_size = synced_size + sync_result.get_size(S3SyncOutcome.up_to_date)
+            backed_up_size = s3_total_size - sync_result.get_size(S3SyncOutcome.skipped) - sync_result.get_size(S3SyncOutcome.failed)
             local_size, local_count = get_dir_size(destination)
             level, message = compare_backup_sizes(backed_up_size, local_size)
             output_routines = {"error": self.error_out, "info": log.info}
             output_routines[level](
-                f"{bucket_name} : {message} (synced={synced_count}, not_backed_up={len(not_backed_up)}, failed={len(failed)}, s3_count={sync_result.get_count()}, local_count={local_count}; "
-                f"s3_total_size={sync_result.get_size()}, backed_up_size={backed_up_size}, local_size={local_size})"
+                f"{bucket_name} : {message} (synced={synced_count}, not_backed_up={len(not_backed_up)}, failed={len(failed)}, s3_count={s3_object_count}, local_count={local_count}; "
+                f"s3_total_size={s3_total_size}, backed_up_size={backed_up_size}, local_size={local_size})"
             )
 
         if dry_run:

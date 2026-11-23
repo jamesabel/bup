@@ -157,6 +157,12 @@ def test_cost_column_is_only_as_wide_as_its_contents(transfer_widget):
     spacer_column = len(columns)
     assert transfer_widget.table.columnCount() == spacer_column + 1
     assert transfer_widget.table.horizontalHeaderItem(spacer_column).text() == ""
+    # Start with width to spare: the size a widget is first shown at depends on the display, and where the columns do not all fit the
+    # spacer is not the remaining width (Qt keeps it at its default section size at least, and the table scrolls), so that widening
+    # the tab first goes to making the columns fit.
+    content_width = sum(header.sectionSize(column) for column in range(spacer_column))
+    transfer_widget.resize(content_width + 4 * header.defaultSectionSize(), transfer_widget.height())
+    qapp_process_events()
     cost_width = header.sectionSize(cost_column)
     spacer_width = header.sectionSize(spacer_column)
 
