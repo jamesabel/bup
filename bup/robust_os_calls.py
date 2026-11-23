@@ -51,28 +51,29 @@ def _remove_readonly_onexc(func, path, exc):
     func(path)
 
 
-def rmdir(p: Path):
+rmdir_attempts = 10  # times rmdir() tries to remove a directory
+rmdir_retry_seconds = 1.0  # the wait after an attempt that failed
+
+
+def rmdir(p: Path) -> bool:
     """
-    Remove a directory and everything in it, trying again for a while if it can not be removed.
+    Remove a directory and everything in it, trying again for a while if it can not be removed (e.g. a file in it is open in
+    another process for a moment). A directory that is still there after rmdir_attempts attempts is not an exception: the caller
+    is told with the return value, and it is the caller that reports it as the failure it is to what the caller is doing.
 
     :param p: the directory
-    :return: True if the directory is gone
+    :return: True if the directory is gone (also if it was not there to begin with)
     """
-    retry_count = 10
-    while p.exists() and retry_count > 0:
+    for attempt in range(1, rmdir_attempts + 1):
+        if not p.exists():
+            break
         try:
-            _p = make_long_path_compatible(p)
-            shutil.rmtree(_p, onexc=_remove_readonly_onexc)
-        except FileNotFoundError as e:
-            log.debug(str(e))  # this can happen when first doing the shutil.rmtree()
-            time.sleep(1)
-        except PermissionError as e:
-            log.info(str(e))
-            time.sleep(1)
+            shutil.rmtree(make_long_path_compatible(p), onexc=_remove_readonly_onexc)
         except OSError as e:
-            log.info(str(e))
-            time.sleep(1)
-        retry_count -= 1
-    if p.exists():
-        log.error('could not remove "%s"' % p)
-    return not p.exists()
+            # e.g. PermissionError for a file that is in use, or FileNotFoundError for something that was removed meanwhile
+            log.info(f'could not remove "{p}" (attempt {attempt} of {rmdir_attempts}) : {e}')
+            time.sleep(rmdir_retry_seconds)
+    removed = not p.exists()
+    if not removed:
+        log.warning(f'could not remove "{p}" in {rmdir_attempts} attempts')
+    return removed

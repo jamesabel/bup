@@ -47,7 +47,7 @@ python -m bup <path> -s    # CLI with S3 backup
 **Three backup implementations:**
 - `S3Backup` - Uses awsimple's `S3Access.sync_to_directory()` to sync each bucket to a directory, in the bucket's own region (no AWS CLI; local files are never deleted). Per object outcomes: downloaded/failed/skipped (see README "S3 backup"). With the `s3_verify` preference (`--verify`), every local file is then checked against its S3 object's metadata - size, hash, mtime - by `bup/s3_verify.py`
 - `DynamoDBBackup` - Uses awsimple, exports tables to pickle and JSON
-- `GithubBackup` - Uses github3.py for API access, GitPython for git operations (clone, then mirror every branch by `fetch --prune` + `reset --hard origin/<branch>` - never `git pull`, so force-pushed/orphan branches never trigger a re-clone)
+- `GithubBackup` - Uses github3.py for API access, GitPython for git operations (clone, then mirror every branch by `fetch --prune` + `reset --hard origin/<branch>` - never `git pull`, so force-pushed/orphan branches never trigger a re-clone). `run_backup()` -> `backup_repo()` -> `pull_repo()` or `clone_repo()`; `pull_branches()` -> `open_repo()`, `fetch()`, `reset_branch()` per branch, `switch_branch()`
 
 **Shared pieces:** `bup/aws_access.py` gives the S3 and DynamoDB backups their awsimple access arguments from the preferences (`get_aws_access_kwargs()`), and `bup/gui/gui_util.py` holds the GUI helpers (`make_row()`, `to_positive_int()`, `get_local_time_string()`). Tests patch `get_preferences` and `ExclusionPreferences` per backup module (e.g. `bup.s3_backup.get_preferences`), so each backup module keeps calling them by its own name.
 
