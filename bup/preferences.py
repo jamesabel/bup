@@ -1,3 +1,8 @@
+"""
+The preferences of bup, which are kept in a SQLite database in the user's profile (through the pref library): the settings of the
+CLI and of the GUI, and the exclusion list of each backup type.
+"""
+
 from balsa import get_logger
 from pref import Pref, PrefOrderedSet
 from attr import attrib, attrs
@@ -10,6 +15,10 @@ log = get_logger(__application_name__)
 
 @attrs
 class BupPreferences(Pref):
+    """
+    The settings of one user interface. An attribute that was never set is its default (None for most).
+    Setting an attribute writes it to the database right away.
+    """
 
     backup_directory: str = attrib(default=None)
 
@@ -66,11 +75,23 @@ class BupPreferences(Pref):
 
 
 def get_preferences(ui_type: UITypes) -> BupPreferences:
+    """
+    :param ui_type: the user interface (the CLI and the GUI each have their own preferences)
+    :return: its preferences
+    """
     return BupPreferences(__application_name__, __author__, f"{ui_type.name}_preferences")
 
 
 class ExclusionPreferences(PrefOrderedSet):
+    """
+    The exclusion list of a backup type: the names (S3 buckets, DynamoDB tables or GitHub repos) that are not backed up, as the user
+    entered them. The CLI and the GUI share it.
+    """
+
     def __init__(self, exclusion_type: str):
+        """
+        :param exclusion_type: the name of the backup type (BackupTypes.<type>.name)
+        """
         super().__init__(__application_name__, __author__, f"exclusions_{exclusion_type}")
 
     def get_no_comments(self) -> List[str]:

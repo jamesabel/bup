@@ -1,3 +1,7 @@
+"""
+The graphical user interface of bup.
+"""
+
 import os
 
 from PyQt5.QtWidgets import QApplication
@@ -16,6 +20,9 @@ log = get_logger(__application_name__)
 
 
 def gui_main():
+    """
+    Run the GUI: set up logging (and Sentry, if the environment asks for it), show the main window and run until it is closed.
+    """
 
     balsa = Balsa(__application_name__, __author__, gui=True, verbose=get_gui_preferences().verbose)
     balsa.use_sentry = to_bool_strict(os.environ.get("USE_SENTRY", "false"))

@@ -1,3 +1,8 @@
+"""
+File system calls that work where the plain ones do not on Windows: paths longer than MAX_PATH, read-only files, and files that
+are briefly locked by another process (e.g. a virus scanner).
+"""
+
 import stat
 import shutil
 import time
@@ -5,8 +10,6 @@ import logging
 import os
 from os import chmod
 from pathlib import Path
-
-# robust OS functions
 
 from bup import __application_name__
 
@@ -28,11 +31,17 @@ def make_long_path_compatible(path: Path) -> str:
 
 
 def remove_readonly(path: Path):
+    """
+    Make a file or directory writable, so that it can be removed.
+    """
     chmod(path, stat.S_IWRITE | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)
 
 
-# sometimes needed for Windows
 def _remove_readonly_onexc(func, path, exc):
+    """
+    Error handler of shutil.rmtree(), sometimes needed on Windows (e.g. the read-only files of a git repository): make what could
+    not be removed writable, and try again.
+    """
     _path = Path(path)
     if _path.is_file():
         remove_readonly(_path)
@@ -43,6 +52,12 @@ def _remove_readonly_onexc(func, path, exc):
 
 
 def rmdir(p: Path):
+    """
+    Remove a directory and everything in it, trying again for a while if it can not be removed.
+
+    :param p: the directory
+    :return: True if the directory is gone
+    """
     retry_count = 10
     while p.exists() and retry_count > 0:
         try:

@@ -1,3 +1,7 @@
+"""
+The icon of bup.
+"""
+
 from pathlib import Path
 import inspect
 

@@ -1,3 +1,7 @@
+"""
+The GUI's "Backup" tab: the Start and Stop buttons, and for each backup type its exclusions and its output.
+"""
+
 import threading
 from enum import Enum
 from datetime import datetime
@@ -9,8 +13,9 @@ from balsa import get_logger
 
 from bup import BackupTypes, S3Backup, DynamoDBBackup, GithubBackup, ExclusionPreferences, UITypes, __application_name__
 from bup.gui import get_gui_preferences
+from bup.gui.gui_util import get_local_time_string, make_row, to_positive_int
 
-max_text_lines = 1000
+max_text_lines = 1000  # lines kept in a display box (the oldest are dropped)
 
 backup_classes = {BackupTypes.S3: S3Backup, BackupTypes.DynamoDB: DynamoDBBackup, BackupTypes.github: GithubBackup}
 
@@ -18,7 +23,15 @@ log = get_logger(__application_name__)
 
 
 class RunAll(QThread):
+    """
+    Runs every backup type at the same time, each in its own thread, and waits for them all. A run that was not stopped is recorded as
+    the most recent backup, which is what the automatic backup counts from.
+    """
+
     def __init__(self, widget):
+        """
+        :param widget: the RunBackupWidget whose backups this runs
+        """
         self.widget = widget
         super().__init__()
 
@@ -33,11 +46,11 @@ class RunAll(QThread):
             self.widget.most_recent_backup = int(round(datetime.now().timestamp()))
 
 
-def get_local_time_string() -> str:
-    return datetime.now().astimezone().isoformat()
-
-
 class DisplayTypes(Enum):
+    """
+    The boxes of a backup type in the Backup tab. The value is the title of the box.
+    """
+
     exclusions = "Exclusions (one per line)"
     log = "Log"
     warnings = "Warnings"
@@ -50,6 +63,10 @@ class DisplayBox(QGroupBox):
     """
 
     def __init__(self, name: str, read_only: bool):
+        """
+        :param name: the title of the box
+        :param read_only: False for a box the user types in (the exclusions)
+        """
         super().__init__(name)
         self.setLayout(QVBoxLayout())  # only one widget so orientation doesn't matter
         self.text_box = QTextEdit()
@@ -58,6 +75,9 @@ class DisplayBox(QGroupBox):
         self.text = []
 
     def append_text(self, s):
+        """
+        Add a line, with the time, at the top (most recent activity first). Only the most recent max_text_lines lines are kept.
+        """
         # insert at the top (most recent activity first) with cursor operations so each append is O(1),
         # instead of re-rendering the whole buffer for every line
         line = f"{get_local_time_string()} {s}"
@@ -111,11 +131,11 @@ class BackupWidget(QGroupBox):
                     "One name per line. '#' starts a comment (whole line or trailing, e.g. 'my-bucket  # note'). Blank lines and surrounding whitespace are ignored."
                 )
                 self.display_boxes[display_type].text_box.textChanged.connect(self.exclusions_save_timer.start)
-            else:
-                self.display_boxes[display_type].text_box.setReadOnly(True)
 
     def flush_exclusions(self):
-        # write out any pending (debounced) exclusion edits immediately
+        """
+        Write out any pending (debounced) exclusion edits immediately.
+        """
         if self.exclusions_save_timer.isActive():
             self.exclusions_save_timer.stop()
             self.exclusions()
@@ -134,6 +154,10 @@ class BackupWidget(QGroupBox):
 
 
 class RunBackupWidget(QWidget):
+    """
+    "Backup" tab - starts and stops the backups, and shows each backup type's exclusions, output, warnings and errors.
+    """
+
     def __init__(self):
         super().__init__()
 
@@ -143,19 +167,12 @@ class RunBackupWidget(QWidget):
         self.setLayout(self.top_level_layout)
 
         # controls across the top
-        self.controls_widget = QWidget()
-        self.controls_layout = QHBoxLayout()
-        self.controls_widget.setLayout(self.controls_layout)
         self.start_button = QPushButton("Start")
         self.start_button.clicked.connect(self.start)
-        self.controls_layout.addWidget(self.start_button)
         self.stop_button = QPushButton("Stop")
         self.stop_button.clicked.connect(self.stop)
-        self.controls_layout.addWidget(self.stop_button)
-        self.controls_layout.addWidget(QLabel("Next backup:"))
         self.countdown_text = QLabel()
-        self.controls_layout.addWidget(self.countdown_text)
-        self.controls_layout.addStretch()
+        self.controls_widget = make_row(self.start_button, self.stop_button, "Next backup:", self.countdown_text)
 
         # status
         self.status_widget = QGroupBox("Status")
@@ -182,6 +199,11 @@ class RunBackupWidget(QWidget):
         self.restore_state()
 
     def start(self) -> bool:
+        """
+        Start a backup of every backup type.
+
+        :return: True if it was started, False if it can not be (no backup directory is set)
+        """
         preferences = get_gui_preferences()
         if preferences.backup_directory is None:
             # the auto-backup timer may retry every second - only log the first failure, not one per tick
@@ -194,10 +216,16 @@ class RunBackupWidget(QWidget):
         return True
 
     def stop(self):
+        """
+        Ask every backup to stop (see BupBase.request_stop()).
+        """
         for backup_type in self.backup_engines:
             self.backup_engines[backup_type].request_stop()
 
     def wait_for_threads(self, timeout_ms: int = 5000):
+        """
+        Wait for a running backup to end (e.g. after stop(), on exit), and terminate its threads if it has not ended in time.
+        """
         if self.run_all.isRunning():
             if not self.run_all.wait(timeout_ms):
                 for backup_type in self.backup_engines:
@@ -205,9 +233,16 @@ class RunBackupWidget(QWidget):
                 self.run_all.terminate()
 
     def get_layout_key(self, backup_type: BackupTypes, display_type: DisplayTypes, height_width: str):
+        """
+        :param height_width: "height" or "width"
+        :return: the name of the preference that the height or width of a display box is saved as
+        """
         return f"{backup_type.name}_{display_type.name}_{height_width}"
 
     def save_state(self):
+        """
+        Save the exclusions, the sizes of the display boxes and the time of the most recent backup, for the next time bup is run.
+        """
         preferences = get_gui_preferences()
         for backup_type in BackupTypes:
             self.backup_status[backup_type].flush_exclusions()
@@ -218,15 +253,16 @@ class RunBackupWidget(QWidget):
         preferences.most_recent_backup = self.most_recent_backup
 
     def restore_state(self):
+        """
+        Restore what save_state() saved.
+        """
         preferences = get_gui_preferences()
         for backup_type in BackupTypes:
             for display_type in DisplayTypes:
-                if (height := getattr(preferences, self.get_layout_key(backup_type, display_type, "height"), 0)) is not None:
-                    height = int(height)
-                if (width := getattr(preferences, self.get_layout_key(backup_type, display_type, "width"), 0)) is not None:
-                    width = int(width)
+                height = to_positive_int(getattr(preferences, self.get_layout_key(backup_type, display_type, "height"), None))
+                width = to_positive_int(getattr(preferences, self.get_layout_key(backup_type, display_type, "width"), None))
                 # make sure all windows come up as visible, even if not set or the user has reduced them to zero
-                if height is not None and height > 0 and width is not None and width > 0:
+                if height is not None and width is not None:
                     self.backup_status[backup_type].display_boxes[display_type].resize(width, height)
 
         self.most_recent_backup = preferences.most_recent_backup

@@ -33,6 +33,10 @@ def get_file_crc(path: Path, crc: Callable[[bytes, int], int]) -> str:
 
 
 def get_file_digest(path: Path, algorithm: str) -> str:
+    """
+    A hash of a file's contents, as a hex string.
+    :param algorithm: the name hashlib has for the hash, e.g. "sha256"
+    """
     with open(path, "rb") as f:
         return hashlib.file_digest(f, algorithm).hexdigest()
 

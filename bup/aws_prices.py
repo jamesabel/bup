@@ -42,6 +42,10 @@ class AWSPriceError(Exception):
 
 @dataclass(frozen=True)
 class AWSPrices:
+    """
+    The prices of one AWS region that a backup's cost is estimated with.
+    """
+
     region: str
     transfer_out_price_per_gb: float  # USD, data transfer out to the internet
     dynamodb_read_price_per_million_units: float  # USD, on-demand read request units
@@ -49,6 +53,9 @@ class AWSPrices:
 
 
 def get_aws_price_cache_path() -> Path:
+    """
+    :return: the path of the SQLite database the fetched prices are cached in (in bup's user cache directory)
+    """
     return Path(appdirs.user_cache_dir(__application_name__, __author__), "aws_prices.db")
 
 
@@ -102,12 +109,19 @@ def fetch_aws_prices(region: str) -> AWSPrices:
     return AWSPrices(region, transfer_out_price_per_gb, dynamodb_read_price_per_million_units, time.time())
 
 
+# the columns of the price cache table, which are the fields of AWSPrices in order
+price_cache_columns = "region, transfer_out_price_per_gb, dynamodb_read_price_per_million_units, fetched"
+
+
 class AWSPriceCache:
     """
     The fetched prices of each region, in a SQLite database. Each call opens its own connection, so this can be used from any thread.
     """
 
     def __init__(self, path: Path):
+        """
+        :param path: the path of the database (made, with its directory, if it does not exist)
+        """
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with closing(self._connect()) as connection, connection:
@@ -120,19 +134,28 @@ class AWSPriceCache:
         return sqlite3.connect(self.path)
 
     def get(self, region: str) -> Optional[AWSPrices]:
+        """
+        :return: the cached prices of a region, or None if there are none
+        """
         with closing(self._connect()) as connection:
-            row = connection.execute("SELECT region, transfer_out_price_per_gb, dynamodb_read_price_per_million_units, fetched FROM aws_prices WHERE region = ?", (region,)).fetchone()
+            row = connection.execute(f"SELECT {price_cache_columns} FROM aws_prices WHERE region = ?", (region,)).fetchone()
         return None if row is None else AWSPrices(*row)
 
     def get_all(self) -> List[AWSPrices]:
+        """
+        :return: the cached prices of every region, in order of region name
+        """
         with closing(self._connect()) as connection:
-            rows = connection.execute("SELECT region, transfer_out_price_per_gb, dynamodb_read_price_per_million_units, fetched FROM aws_prices ORDER BY region").fetchall()
+            rows = connection.execute(f"SELECT {price_cache_columns} FROM aws_prices ORDER BY region").fetchall()
         return [AWSPrices(*row) for row in rows]
 
     def put(self, aws_prices: AWSPrices):
+        """
+        Cache the prices of a region, in place of the ones cached for it before.
+        """
         with closing(self._connect()) as connection, connection:
             connection.execute(
-                "INSERT OR REPLACE INTO aws_prices (region, transfer_out_price_per_gb, dynamodb_read_price_per_million_units, fetched) VALUES (?, ?, ?, ?)",
+                f"INSERT OR REPLACE INTO aws_prices ({price_cache_columns}) VALUES (?, ?, ?, ?)",
                 (aws_prices.region, aws_prices.transfer_out_price_per_gb, aws_prices.dynamodb_read_price_per_million_units, aws_prices.fetched),
             )
 

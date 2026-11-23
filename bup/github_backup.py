@@ -1,3 +1,11 @@
+"""
+The GitHub backup: every repository the token can see is cloned to <backup directory>/github/<owner>/<repo>, and from then on
+every branch is kept an exact mirror of the remote (fetch and hard reset - never a merge).
+
+GitPython is imported where it is used and not at the top of this module: importing it fails if there is no git executable, which
+run_backup() checks for (and reports) first.
+"""
+
 import base64
 from pathlib import Path
 import shutil
@@ -47,6 +55,9 @@ def parse_count_objects(count_objects_output: str) -> Optional[int]:
 
 
 class GithubBackup(BupBase):
+    """
+    Backs up every GitHub repository the token can see (other than the excluded ones) to <backup directory>/github.
+    """
 
     backup_type = BackupTypes.github
 
@@ -56,7 +67,9 @@ class GithubBackup(BupBase):
         self._git_env: dict = {}
 
     def redact(self, s: str) -> str:
-        # keep the token out of the GUI, logs, and Sentry
+        """
+        Take the GitHub token out of text (e.g. a git error message) that goes to the GUI, the logs or Sentry.
+        """
         if self._github_token:
             s = s.replace(self._github_token, "***")
         return s
@@ -83,6 +96,10 @@ class GithubBackup(BupBase):
             self.transfer_out(TransferRecord(BackupTypes.github, repo_name, size_after - size_before))
 
     def run_backup(self):
+        """
+        Back up every repository: fetch and reset the local copy if there is one, and clone if there is none or the local copy can
+        not be brought up to date. A failure of one repository does not end the backup of the others.
+        """
         if shutil.which("git") is None:
             self.error_out("git executable not found in PATH - GitHub backup cannot run")
             return
@@ -153,10 +170,8 @@ class GithubBackup(BupBase):
                             time.sleep(1.0)  # let Windows release file locks on the fresh clone before touching it
                             self.pull_branches(repo_owner_and_name, branches, repo_dir, clone_url=clone_url)
                             clone_count += 1
-                    except PermissionError as e:
+                    except (PermissionError, GitCommandError) as e:
                         # the clone is the last resort - if it fails, this repo was not backed up
-                        self.error_out(self.redact(f'{repo_owner_and_name},"{repo_dir}",{e},"{__file__}"'))
-                    except GitCommandError as e:
                         self.error_out(self.redact(f'{repo_owner_and_name},"{repo_dir}",{e},"{__file__}"'))
 
         self.info_out(f"{len(repositories)} repos, {pull_count} pulls, {clone_count} clones, {len(exclusions)} excluded")
@@ -165,6 +180,16 @@ class GithubBackup(BupBase):
 
     @typechecked()
     def pull_branches(self, repo_name: str, branches: list, repo_dir: Path, clone_url: Optional[str] = None) -> bool:
+        """
+        Make every branch of a local repository an exact mirror of the remote: one fetch, then a hard reset of each branch to its
+        remote-tracking ref. It is not a "git pull" (see the comment at the fetch). The repository is left on its main branch.
+
+        :param repo_name: the repository, as owner/name (for the output)
+        :param branches: the branches of the repository on GitHub (github3 branch objects)
+        :param repo_dir: the local repository
+        :param clone_url: the URL of the repository without a token, which the remote is set to
+        :return: True if at least one branch was reset to its remote. On False the caller falls back to a fresh clone.
+        """
         from git import Repo
         from git.exc import GitCommandError, InvalidGitRepositoryError
 

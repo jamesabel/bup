@@ -1,3 +1,8 @@
+"""
+Where a log record belongs: every log record of bup is of one log source (a backup type, or the rest of the application), which
+the GUI's Log tab has a pane for and the detailed file logging has a file for.
+"""
+
 import logging
 from enum import Enum
 from pathlib import Path
@@ -9,6 +14,10 @@ log_line_format = "%(asctime)s %(levelname)s %(filename)s:%(lineno)d %(threadNam
 
 
 class LogSources(Enum):
+    """
+    What a log record is about. The value is the title of its pane in the Log tab, the name that of its detailed log file.
+    """
+
     s3 = "AWS S3"
     dynamodb = "DynamoDB"
     github = "GitHub"
@@ -33,6 +42,10 @@ log_sources_by_filename = {
 
 
 def get_log_source(record: logging.LogRecord) -> LogSources:
+    """
+    :return: the log source of a log record: the backup type it is stamped with, otherwise that of the source file it was logged from,
+      otherwise the application
+    """
     backup_type = getattr(record, "backup_type", None)
     if backup_type in log_sources_by_backup_type:
         return log_sources_by_backup_type[backup_type]
@@ -59,9 +72,15 @@ class DetailedFileLogHandler(logging.Handler):
         self.files: Dict[LogSources, TextIO] = {}
 
     def get_log_file_path(self, log_source: LogSources) -> Path:
+        """
+        :return: the path of the log file of a log source
+        """
         return Path(self.directory, f"{log_source.name}.log")
 
     def rotate(self, log_source: LogSources):
+        """
+        Close the log file of a log source and rename it to <name>.log.1, in place of the previous one.
+        """
         file = self.files.pop(log_source)
         file.close()
         log_file_path = self.get_log_file_path(log_source)

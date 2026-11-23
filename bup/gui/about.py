@@ -1,3 +1,7 @@
+"""
+The GUI's "About" tab.
+"""
+
 import platform
 from pathlib import Path
 
@@ -10,6 +14,10 @@ log = get_logger(__application_name__)
 
 
 class BupAbout(QWidget):
+    """
+    "About" tab - the versions of bup and of Python, the license, and where bup comes from.
+    """
+
     def __init__(self):
         super().__init__()
         self.setLayout(QVBoxLayout())

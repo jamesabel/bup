@@ -8,7 +8,6 @@ import base64
 import hashlib
 import os
 import sys
-import urllib.request
 import zlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -27,7 +26,7 @@ from bup.gui.preferences_widget import PreferencesWidget
 from bup.s3_backup import max_keys_to_list
 from bup.s3_verify import get_s3_object_hash, mtime_abs_tol, verify_local_file
 
-from .s3_sync_fakes import FakeS3, downloaded, make_preferences, make_s3_backup, make_sync_result, run_s3_backup
+from .s3_sync_fakes import FakeS3, downloaded, make_preferences, make_s3_backup, make_sync_result, run_real_s3_backup, run_s3_backup
 
 s3_mtime = datetime(2026, 11, 20, 12, 0, 0, tzinfo=timezone.utc)
 contents = b"the contents of the S3 object"
@@ -317,46 +316,6 @@ def test_file_is_not_verified_once_a_stop_is_requested(tmp_path):
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
-@pytest.fixture
-def moto_s3_endpoint(monkeypatch, tmp_path):
-    """
-    A local in-memory S3 server, with the environment set up so boto3 and awsimple talk to it and not real AWS.
-    """
-    from moto.server import ThreadedMotoServer
-
-    server = ThreadedMotoServer(ip_address="127.0.0.1", port=0, verbose=False)
-    server.start()
-    host, port = server.get_host_and_port()
-    endpoint_url = f"http://{host}:{port}"
-    monkeypatch.setenv("AWS_ENDPOINT_URL", endpoint_url)
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
-    monkeypatch.setenv("AWS_SESSION_TOKEN", "testing")
-    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
-    # keep any real AWS profile/config on this machine from leaking into the test
-    monkeypatch.delenv("AWS_PROFILE", raising=False)
-    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", str(tmp_path / "no-credentials-file"))
-    monkeypatch.setenv("AWS_CONFIG_FILE", str(tmp_path / "no-config-file"))
-    # moto keeps its buckets in this process, across servers: start without the buckets of earlier tests, and leave none behind
-    reset_request = urllib.request.Request(f"{endpoint_url}/moto-api/reset", method="POST")
-    urllib.request.urlopen(reset_request, timeout=10.0).close()
-    yield endpoint_url
-    urllib.request.urlopen(reset_request, timeout=10.0).close()
-    server.stop()
-
-
-def _run_real_verified_backup(backup_directory: Path):
-    backup = make_s3_backup()
-    with (
-        patch("bup.s3_backup.get_preferences", return_value=make_preferences(backup_directory, s3_verify=True)),
-        patch("bup.s3_backup.ExclusionPreferences") as mock_exclusions,
-    ):
-        mock_exclusions.return_value.get_no_comments.return_value = []
-        backup.run()
-    return backup
-
-
-# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
 def test_real_backup_is_verified_and_a_damaged_file_is_found(moto_s3_endpoint, tmp_path):
     """
     The real sync and verification against a local S3 server: what was just backed up verifies with a hash from S3, and a local
@@ -367,7 +326,7 @@ def test_real_backup_is_verified_and_a_damaged_file_is_found(moto_s3_endpoint, t
     s3_client.put_object(Bucket="verify-bucket", Key="plain.txt", Body=b"x" * 1000, ChecksumAlgorithm="CRC64NVME")
     s3_client.put_object(Bucket="verify-bucket", Key="/folder//nested.txt", Body=b"y" * 2000, ChecksumAlgorithm="SHA256")
 
-    backup = _run_real_verified_backup(tmp_path)
+    backup = run_real_s3_backup(tmp_path, s3_verify=True)
 
     assert backup.errors == []
     assert backup.warnings == []
@@ -378,7 +337,7 @@ def test_real_backup_is_verified_and_a_damaged_file_is_found(moto_s3_endpoint, t
     nested_file.write_bytes(b"z" * 2000)
     os.utime(nested_file, (nested_stat.st_mtime, nested_stat.st_mtime))
 
-    second_backup = _run_real_verified_backup(tmp_path)
+    second_backup = run_real_s3_backup(tmp_path, s3_verify=True)
 
     assert "1 buckets, 1 backed up, 0 files synced, 0 excluded" in second_backup.infos  # the sync sees a current file
     assert len(second_backup.errors) == 1

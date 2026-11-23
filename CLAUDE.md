@@ -49,9 +49,11 @@ python -m bup <path> -s    # CLI with S3 backup
 - `DynamoDBBackup` - Uses awsimple, exports tables to pickle and JSON
 - `GithubBackup` - Uses github3.py for API access, GitPython for git operations (clone, then mirror every branch by `fetch --prune` + `reset --hard origin/<branch>` - never `git pull`, so force-pushed/orphan branches never trigger a re-clone)
 
+**Shared pieces:** `bup/aws_access.py` gives the S3 and DynamoDB backups their awsimple access arguments from the preferences (`get_aws_access_kwargs()`), and `bup/gui/gui_util.py` holds the GUI helpers (`make_row()`, `to_positive_int()`, `get_local_time_string()`). Tests patch `get_preferences` and `ExclusionPreferences` per backup module (e.g. `bup.s3_backup.get_preferences`), so each backup module keeps calling them by its own name.
+
 **Preferences:** SQLite-backed via the `pref` library with `attrs` data classes. CLI and GUI have separate preference stores. Exclusion lists (per backup type) are sanitized by `ExclusionPreferences.get_no_comments()`: `#` starts a comment (whole-line or inline trailing), blank lines are dropped, and entries are whitespace-stripped (see README "Exclusions").
 
-**GUI:** PyQt5 tabbed dialog (`BupDialog`) with `RunBackupWidget`, `PreferencesWidget`, `LogWidget` (detailed application log via a logging handler), `TransferWidget` (bytes received and approximate AWS cost), and `BupAbout` tabs.
+**GUI:** PyQt5 tabbed dialog (`BupDialog`) with `RunBackupWidget`, `PreferencesWidget` (its `PreferencesLineEdit` and `PreferenceCheckBox` widgets are each bound to one preference by name - a new option is one line there), `LogWidget` (detailed application log via a logging handler), `TransferWidget` (bytes received and approximate AWS cost), and `BupAbout` tabs.
 
 **Transfer accounting:** `bup/transfer.py` holds `TransferRecord`, the cost math, and the `transfer_emitter` signal. `bup/aws_prices.py` gets each AWS region's prices from the public AWS Price List files and caches them in a SQLite DB (refetched weekly; no user-entered prices) - tests never fetch or touch the real cache (root `conftest.py`). Backups call `BupBase.transfer_out()` per bucket/table/repo that received data; the GUI shows these only in the Transfer tab and the log (not the Backup tab), the CLI prints them (see README "Transfer and approximate AWS cost").
 
@@ -60,6 +62,7 @@ python -m bup <path> -s    # CLI with S3 backup
 - Black formatter with **192-character line length**
 - flake8 ignores: E402, F401, W503, E203, E501
 - Runtime type checking via `@typechecked()` decorator from typeguard
+- Every module, class and public function has a docstring (reST-style `:param:` / `:return:` where they add something)
 - Windows-specific path handling in `robust_os_calls.py` (long paths with `\\?\` prefix, readonly removal, retry logic for filesystem ops)
 - Logging via `balsa` library with Sentry integration for error tracking
 

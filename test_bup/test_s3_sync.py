@@ -6,20 +6,17 @@ The repository's conftest.py gives every test an empty AWS price cache of its ow
 
 import logging
 import os
-import urllib.request
 from pathlib import Path
-from unittest.mock import patch
 
 import boto3
 import pytest
 from awsimple import S3SyncObject, S3SyncOutcome
 from botocore.exceptions import ClientError, NoCredentialsError
-from moto.server import ThreadedMotoServer
 
 from bup import __application_name__
 from bup.s3_backup import is_folder_marker, log_synced_object, max_keys_to_list
 
-from .s3_sync_fakes import FakeS3, downloaded, make_preferences, make_s3_backup, make_sync_result, run_s3_backup
+from .s3_sync_fakes import FakeS3, downloaded, make_preferences, make_s3_backup, make_sync_result, run_real_s3_backup, run_s3_backup
 
 
 def _write_local_file(tmp_path: Path, bucket_name: str, relative_path: str, size: int):
@@ -239,47 +236,6 @@ def test_stop_request_reaches_the_sync_and_ends_the_backup(tmp_path):
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
-@pytest.fixture
-def moto_s3_endpoint(monkeypatch, tmp_path):
-    """
-    A local in-memory S3 server, with the environment set up so boto3 and awsimple talk to it and not real AWS.
-    """
-    server = ThreadedMotoServer(ip_address="127.0.0.1", port=0, verbose=False)
-    server.start()
-    host, port = server.get_host_and_port()
-    endpoint_url = f"http://{host}:{port}"
-    monkeypatch.setenv("AWS_ENDPOINT_URL", endpoint_url)
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
-    monkeypatch.setenv("AWS_SESSION_TOKEN", "testing")
-    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
-    # keep any real AWS profile/config on this machine from leaking into the test
-    monkeypatch.delenv("AWS_PROFILE", raising=False)
-    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", str(tmp_path / "no-credentials-file"))
-    monkeypatch.setenv("AWS_CONFIG_FILE", str(tmp_path / "no-config-file"))
-    # moto keeps its buckets in this process, across servers: start without the buckets of earlier tests, and leave none behind
-    reset_request = urllib.request.Request(f"{endpoint_url}/moto-api/reset", method="POST")
-    urllib.request.urlopen(reset_request, timeout=10.0).close()
-    yield endpoint_url
-    urllib.request.urlopen(reset_request, timeout=10.0).close()
-    server.stop()
-
-
-def _run_real_backup(backup_directory: Path, dry_run: bool = False):
-    """
-    Run an S3 backup with the real awsimple S3Access (against the local S3 server of moto_s3_endpoint).
-    """
-    backup = make_s3_backup()
-    with (
-        patch("bup.s3_backup.get_preferences", return_value=make_preferences(backup_directory, dry_run=dry_run)),
-        patch("bup.s3_backup.ExclusionPreferences") as mock_exclusions,
-    ):
-        mock_exclusions.return_value.get_no_comments.return_value = []
-        backup.run()
-    return backup
-
-
-# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
 def test_real_sync_end_to_end_including_no_redownload(moto_s3_endpoint, tmp_path):
     """
     The real sync against a local S3 server: the first backup downloads every object (also those whose keys start with "/" or have
@@ -293,7 +249,7 @@ def test_real_sync_end_to_end_including_no_redownload(moto_s3_endpoint, tmp_path
     s3_client.put_object(Bucket="e2e-bucket", Key="folder/sub folder/nested.txt", Body=b"x" * 8000)
     s3_client.put_object(Bucket="e2e-bucket", Key="empty folder/", Body=b"")
 
-    backup = _run_real_backup(tmp_path)
+    backup = run_real_s3_backup(tmp_path)
 
     destination = tmp_path / "s3" / "e2e-bucket"
     local_files = [destination / "plain.txt", destination / "temp" / "leading.txt", destination / "folder" / "doubled.txt", destination / "folder" / "sub folder" / "nested.txt"]
@@ -306,7 +262,7 @@ def test_real_sync_end_to_end_including_no_redownload(moto_s3_endpoint, tmp_path
 
     modification_times = [local_file.stat().st_mtime_ns for local_file in local_files]
 
-    second_backup = _run_real_backup(tmp_path)
+    second_backup = run_real_s3_backup(tmp_path)
 
     assert second_backup.errors == []
     assert second_backup.warnings == []
@@ -322,11 +278,11 @@ def test_real_sync_does_not_download_a_file_again_whose_local_name_differs_in_ca
     s3_client = boto3.client("s3", endpoint_url=moto_s3_endpoint)
     s3_client.create_bucket(Bucket="case-bucket")
     s3_client.put_object(Bucket="case-bucket", Key="static/vendor/select2.js", Body=b"x" * 100)
-    _run_real_backup(tmp_path)
+    run_real_s3_backup(tmp_path)
     destination = tmp_path / "s3" / "case-bucket"
     os.rename(destination / "static" / "vendor", destination / "static" / "Vendor")  # e.g. the directory was made by an earlier backup
 
-    backup = _run_real_backup(tmp_path)
+    backup = run_real_s3_backup(tmp_path)
 
     assert "1 buckets, 1 backed up, 0 files synced, 0 excluded" in backup.infos
     assert backup.warnings == []
@@ -340,7 +296,7 @@ def test_real_dry_run_downloads_nothing(moto_s3_endpoint, tmp_path):
     s3_client.create_bucket(Bucket="dry-run-bucket")
     s3_client.put_object(Bucket="dry-run-bucket", Key="folder/a.txt", Body=b"x" * 100)
 
-    backup = _run_real_backup(tmp_path, dry_run=True)
+    backup = run_real_s3_backup(tmp_path, dry_run=True)
 
     assert "dry-run-bucket : 1 files would be synced" in backup.infos
     assert backup.errors == []

@@ -1,3 +1,7 @@
+"""
+The command line arguments of bup.
+"""
+
 import argparse
 from pathlib import Path
 import sys
@@ -8,6 +12,12 @@ from bup import __application_name__, __version__, __description__
 
 
 def arguments():
+    """
+    Parse the command line.
+
+    :return: the parsed arguments (an argparse.Namespace), or None if there are none, which is how the GUI is asked for.
+      With --version, the version is printed and the program exits.
+    """
 
     version_string = "version"
 

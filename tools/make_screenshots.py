@@ -90,7 +90,7 @@ synthetic_log = {
 }
 
 synthetic_warnings = {
-    BackupTypes.S3: ['example-photos : S3 object "2024/IMG_0042.JPG" has no local file at exactly that path : local name "img_0042.jpg" differs from S3 key "IMG_0042.JPG" only in case'],
+    BackupTypes.S3: ['example-photos : S3 object "archive/2019.zip" not backed up : storage class GLACIER has to be restored before it can be read'],
 }
 
 synthetic_prices = [AWSPrices("us-east-1", 0.09, 0.125, time.time()), AWSPrices("eu-west-1", 0.09, 0.1415, time.time())]
