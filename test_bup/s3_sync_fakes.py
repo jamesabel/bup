@@ -4,6 +4,7 @@ Everything in this file is AI-authored (Claude Code).
 """
 
 from pathlib import Path
+from threading import Event
 from typing import Callable, Dict, List, Optional, Union
 from unittest.mock import patch, MagicMock
 
@@ -74,10 +75,23 @@ class FakeS3:
                 # the listing of the bucket that verifies the sync: the objects of the sync result
                 contents = [{"Key": sync_object.key, "Size": sync_object.size} for sync_object in sync_result.objects.values()]
                 s3_access.client.get_paginator.return_value.paginate.return_value = [{"Contents": contents}]
-            s3_access.verify_directory.side_effect = lambda dest_dir, **kwargs: self.verify_directory(bucket_name, kwargs["sync_result"])
+            s3_access.verify_directory.side_effect = lambda dest_dir, **kwargs: self.run_verification(bucket_name, **kwargs)
             self.bucket_accesses[bucket_name] = s3_access
             self.bucket_access_kwargs[bucket_name] = kwargs
         return s3_access
+
+    def run_verification(self, bucket_name: str, sync_result: S3SyncResult, stop_event: Optional[Event] = None, callback: Optional[Callable[[S3VerifyObject], None]] = None) -> S3VerifyResult:
+        """
+        What awsimple's verify_directory() does with the objects of the result, one after the other: once a stop is requested the
+        objects that are left are not attempted, and the callback is called with every object.
+        """
+        verify_result = self.verify_directory(bucket_name, sync_result)
+        for verify_object in verify_result.objects.values():
+            if stop_event is not None and stop_event.is_set() and verify_object.outcome != S3VerifyOutcome.skipped:
+                verify_object.set_outcome(S3VerifyOutcome.not_attempted)
+            if callback is not None:
+                callback(verify_object)
+        return verify_result
 
     def verify_directory(self, bucket_name: str, sync_result: S3SyncResult) -> S3VerifyResult:
         if bucket_name in self.verify_results:
