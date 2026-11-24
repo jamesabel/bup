@@ -269,7 +269,7 @@ shows it in the "History" tab, most recent first. Each run has:
   - **running** - it has not ended yet
   - **completed** - it got to its end without an error
   - **completed with errors** - it got to its end, but something was not backed up
-  - **stopped** - you stopped it
+  - **stopped** - you stopped it, with Stop or by closing bup while it was running ("Stop and Exit")
   - **failed** - an unexpected failure ended it
   - **did not finish** - it was cut short: bup was closed or crashed, or the system crashed or was shut down, while it
     was running. bup finds this out the next time the GUI is started, and says so in the status line at the bottom of
