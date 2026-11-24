@@ -26,7 +26,7 @@ dependencies = [
     "typeguard",
     # S3Access.sync_to_directory() and verify_directory(), which do the S3 backup and its verification (9.3.0), with an HTTP
     # connection pool that fits the requests they make at the same time (9.3.1)
-    "awsimple>=9.3.1",
+    "awsimple>=9.3.2",
     "GitPython",
     "github3.py",
     "sqlitedict",
