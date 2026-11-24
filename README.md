@@ -36,6 +36,8 @@ It has a GUI for everyday use and a command line for scripts and scheduled jobs.
 - **GitHub:** each repository is cloned, and every branch is kept an exact mirror of the remote.
 - **Exclusions:** skip particular buckets, tables or repos, with comments to say why.
 - **Transfer and cost:** see how much each backup downloaded and approximately what AWS charges for it.
+- **History:** every backup run is on record, with when it ran, how it ended, what it downloaded and its errors. If a
+  backup was cut short (e.g. by a system crash), bup says so the next time it is started.
 - **Logs:** warnings and errors are shown per backup type, with a detailed log of everything bup did.
 
 ## Screen captures
@@ -49,6 +51,10 @@ The Backup tab runs the backups and shows each backup type's exclusions, progres
 The Transfer tab shows what each bucket, table and repo downloaded, and the approximate AWS cost:
 
 ![Transfer tab](https://raw.githubusercontent.com/jamesabel/bup/main/doc/screenshots/transfer.png)
+
+The History tab shows the backup runs on record, and how each one ended:
+
+![History tab](https://raw.githubusercontent.com/jamesabel/bup/main/doc/screenshots/history.png)
 
 The Preferences tab holds the backup directory, credentials and the automatic backup schedule:
 
@@ -247,6 +253,31 @@ The costs are estimates:
 - Request charges (e.g. S3 GET and LIST) are not included.
 - DynamoDB reads are priced as on-demand. A table with provisioned capacity has already paid for its reads.
 - A dry run reports nothing, since nothing is transferred.
+
+# Backup history
+
+bup keeps a record of every backup run in a local SQLite database (`backup_history.db` in bup's user data directory),
+with one row per backup type (S3, DynamoDB, GitHub) each time it is run, from the GUI or the command line. The GUI
+shows it in the "History" tab, most recent first. Each run has:
+
+- when it started and ended, and how long it took
+- what it received over the network, the average rate over the whole run, the DynamoDB read units, and the approximate
+  AWS cost (see "Transfer and approximate AWS cost")
+- how many errors and warnings it had, and the error messages (the first 100 of them; the tab shows the first, and the
+  rest when the mouse is over it)
+- its status:
+  - **running** - it has not ended yet
+  - **completed** - it got to its end without an error
+  - **completed with errors** - it got to its end, but something was not backed up
+  - **stopped** - you stopped it
+  - **failed** - an unexpected failure ended it
+  - **did not finish** - it was cut short: bup was closed or crashed, or the system crashed or was shut down, while it
+    was running. bup finds this out the next time the GUI is started, and says so in the status line at the bottom of
+    the window (until bup is closed). What the backup had received up to the last bucket, table or repo it completed
+    is on record, but not when it was cut short.
+
+A backup records its row when it starts and completes it when it ends, which is how a run that never got to its end is
+found. If the history database can not be written, the backup still runs (and the application log says so).
 
 # Security Notes
 

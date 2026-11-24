@@ -3,7 +3,7 @@ Make the README's screen captures (doc/screenshots/*.png) of the bup GUI showing
 
 Run from the project root with the project's virtual environment:  .venv\\Scripts\\python.exe tools\\make_screenshots.py
 
-Nothing here reads or writes the real preferences, exclusions or AWS price cache, contacts AWS or GitHub, or runs a backup:
+Nothing here reads or writes the real preferences, exclusions, AWS price cache or backup history, contacts AWS or GitHub, or runs a backup:
 the GUI is given stand-ins for all of them, and every name, size and price shown is made up.
 """
 
@@ -18,9 +18,10 @@ sys.path.insert(0, str(project_root))
 from PyQt5.QtWidgets import QApplication
 
 import bup
-from bup import BackupTypes, aws_prices
+from bup import BackupTypes, UITypes, aws_prices, backup_history
 from bup.aws_prices import AWSPrices, AWSPriceCache
-from bup.transfer import TransferRecord, transfer_emitter, get_transfer_out_cost, get_dynamodb_scan_cost
+from bup.backup_history import BackupHistory, BackupStatus
+from bup.transfer import TransferRecord, transfer_emitter, get_transfer_out_cost, get_dynamodb_scan_cost, get_transfer_total
 
 screenshot_width = 1500
 screenshot_height = 820
@@ -113,6 +114,40 @@ def make_synthetic_transfer_records() -> list:
     return transfer_records
 
 
+seconds_per_day = 24 * 60 * 60
+
+# how long each backup type's run took in the synthetic history (seconds)
+synthetic_durations = {BackupTypes.S3: 1325.0, BackupTypes.DynamoDB: 212.0, BackupTypes.github: 96.0}
+
+
+def make_synthetic_history(history: BackupHistory, transfer_records: list):
+    """
+    Fill the backup history with a few days of made up runs: the most recent one received the synthetic transfers, one had an
+    error, one was cut short and one was a run from the command line.
+    """
+    no_transfer = TransferRecord(None, "transfer total", 0)
+    most_recent_start = time.time() - 46 * 60
+    for days_ago in range(5, -1, -1):
+        started = most_recent_start - days_ago * seconds_per_day
+        for backup_type in BackupTypes:
+            run_id = history.start(backup_type, UITypes.gui, started)
+            ended = started + synthetic_durations[backup_type]
+            if days_ago == 0:
+                transfer_total = get_transfer_total(backup_type, [transfer_record for transfer_record in transfer_records if transfer_record.backup_type is backup_type])
+                history.update(run_id, BackupStatus.completed, transfer_total, 0, len(synthetic_warnings.get(backup_type, [])), [], ended)
+            elif days_ago == 2:
+                # the system went down during this run
+                history.update(run_id, BackupStatus.interrupted, no_transfer, 0, 0, [])
+            elif days_ago == 4 and backup_type is BackupTypes.github:
+                errors = ['could not fetch "example-org/billing-service" : could not resolve host github.com']
+                history.update(run_id, BackupStatus.completed_with_errors, TransferRecord(backup_type, "transfer total", 350 * 1024), len(errors), 0, errors, ended)
+            else:
+                history.update(run_id, BackupStatus.completed, no_transfer, 0, 0, [], ended)
+    started = most_recent_start - 3.5 * seconds_per_day
+    run_id = history.start(BackupTypes.S3, UITypes.cli, started)
+    history.update(run_id, BackupStatus.completed, TransferRecord(BackupTypes.S3, "transfer total", 6 * 1024**2, cost=0.0005), 0, 0, [], started + 61.0)
+
+
 def main():
     output_directory = Path(project_root, "doc", "screenshots")
     output_directory.mkdir(parents=True, exist_ok=True)
@@ -123,11 +158,15 @@ def main():
     synthetic_preferences = SyntheticPreferences()
     bup.get_preferences = lambda ui_type: synthetic_preferences
     bup.ExclusionPreferences = SyntheticExclusions
-    with tempfile.TemporaryDirectory() as price_cache_directory:
-        price_cache_path = Path(price_cache_directory, "aws_prices.db")
+    with tempfile.TemporaryDirectory() as data_directory:
+        price_cache_path = Path(data_directory, "aws_prices.db")
         aws_prices.get_aws_price_cache_path = lambda: price_cache_path
         for region_prices in synthetic_prices:
             AWSPriceCache(price_cache_path).put(region_prices)
+        backup_history_path = Path(data_directory, "backup_history.db")
+        backup_history.get_backup_history_path = lambda: backup_history_path
+        transfer_records = make_synthetic_transfer_records()
+        make_synthetic_history(BackupHistory(backup_history_path), transfer_records)
 
         from bup.gui import BupDialog, RunBackupWidget
         from bup.gui.run_backup_widget import DisplayTypes
@@ -144,7 +183,7 @@ def main():
             for line in synthetic_warnings.get(backup_type, []):
                 backup_widget.display_boxes[DisplayTypes.warnings].append_text(line)
         dialog.run_backup_widget.countdown_text.setText("(in 23:14:07)")
-        for transfer_record in make_synthetic_transfer_records():
+        for transfer_record in transfer_records:
             transfer_emitter.transfer_signal.emit(transfer_record)
 
         dialog.show()
@@ -153,7 +192,12 @@ def main():
             backup_widget.splitter.setSizes(pane_heights)
             for display_box in backup_widget.display_boxes.values():
                 display_box.text_box.verticalScrollBar().setValue(0)  # most recent lines are at the top
-        for tab_widget, file_name in ((dialog.run_backup_widget, "backup.png"), (dialog.transfer_widget, "transfer.png"), (dialog.preferences_widget, "preferences.png")):
+        for tab_widget, file_name in (
+            (dialog.run_backup_widget, "backup.png"),
+            (dialog.transfer_widget, "transfer.png"),
+            (dialog.history_widget, "history.png"),
+            (dialog.preferences_widget, "preferences.png"),
+        ):
             dialog.tab_widget.setCurrentWidget(tab_widget)
             app.processEvents()
             screenshot_path = Path(output_directory, file_name)

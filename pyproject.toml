@@ -33,6 +33,7 @@ dependencies = [
     "tobool",
     "attrs",
     "appdirs",
+    "psutil",  # tells if the process that was running a backup still is (bup/backup_history.py)
     "pref",
     "pyqt5",
     "python-dotenv",

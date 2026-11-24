@@ -27,6 +27,16 @@ def isolated_aws_prices(monkeypatch, tmp_path):
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+@pytest.fixture(autouse=True)
+def isolated_backup_history(monkeypatch, tmp_path):
+    """
+    Keep every test away from the user's real backup history: every backup that is run records itself there, and the GUI reads it.
+    Each test gets an empty backup history of its own.
+    """
+    monkeypatch.setattr("bup.backup_history.get_backup_history_path", lambda: tmp_path / "backup_history" / "backup_history.db")
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
 @pytest.fixture
 def moto_s3_endpoint(monkeypatch, tmp_path):
     """
