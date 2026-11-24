@@ -14,7 +14,7 @@ from typeguard import typechecked
 from balsa import get_logger
 
 from bup import __application_name__, UITypes
-from bup.backup_history import BackupStatus, get_backup_history, history_emitter, max_recorded_errors
+from bup.backup_history import BackupCounts, BackupStatus, get_backup_history, history_emitter, max_recorded_errors
 from bup.transfer import TransferRecord, get_transfer_total, transfer_emitter
 
 log = get_logger(__application_name__)
@@ -31,7 +31,7 @@ class BupBase(QThread):
     has no Qt event loop to deliver a signal, so there the callable is called directly.
 
     Every run is recorded in the backup history (see bup/backup_history.py): when it started and ended, how it ended, what it
-    received and its errors.
+    received, its errors and what the derived class counted in counts (e.g. the buckets it found and backed up).
     """
 
     backup_type = None  # the BackupTypes of the derived class
@@ -52,6 +52,7 @@ class BupBase(QThread):
         self.error_count = 0
         self.warning_count = 0
         self.error_messages: List[str] = []
+        self.counts = BackupCounts()  # what this run has counted so far (set by the derived class as it goes), for the backup history
         self.count_lock = threading.Lock()  # errors and warnings can be reported from more than one thread
         self.transfer_records: List[TransferRecord] = []
         self.history_run_id: Optional[int] = None  # this run in the backup history, None if it is not recorded
@@ -71,6 +72,7 @@ class BupBase(QThread):
         self.error_count = 0
         self.warning_count = 0
         self.error_messages = []
+        self.counts = BackupCounts()
         self.transfer_records = []
         super().start(*args, **kwargs)
 
@@ -126,7 +128,7 @@ class BupBase(QThread):
             return  # the start could not be recorded (which was logged), so there is no record to update
         transfer_total = get_transfer_total(self.backup_type, self.transfer_records)
         try:
-            get_backup_history().update(self.history_run_id, status, transfer_total, self.error_count, self.warning_count, self.error_messages, ended)
+            get_backup_history().update(self.history_run_id, status, transfer_total, self.error_count, self.warning_count, self.error_messages, ended, self.counts)
         except (sqlite3.Error, OSError) as e:
             log.warning(f"could not update the backup history : {e}", extra=self._log_extra())
             return

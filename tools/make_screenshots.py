@@ -10,6 +10,7 @@ the GUI is given stand-ins for all of them, and every name, size and price shown
 import sys
 import tempfile
 import time
+from datetime import datetime
 from pathlib import Path
 
 project_root = Path(__file__).resolve().parent.parent
@@ -20,11 +21,12 @@ from PyQt5.QtWidgets import QApplication
 import bup
 from bup import BackupTypes, UITypes, aws_prices, backup_history
 from bup.aws_prices import AWSPrices, AWSPriceCache
-from bup.backup_history import BackupHistory, BackupStatus
+from bup.backup_history import BackupCounts, BackupHistory, BackupStatus
 from bup.transfer import TransferRecord, transfer_emitter, get_transfer_out_cost, get_dynamodb_scan_cost, get_transfer_total
 
 screenshot_width = 1500
 screenshot_height = 820
+history_screenshot_width = 2000  # the History tab has many columns, and is captured wide enough to show them all
 pane_heights = [110, 380, 150, 90]  # of each backup type's exclusions, log, warnings and errors panes (pixels)
 
 
@@ -119,6 +121,24 @@ seconds_per_day = 24 * 60 * 60
 # how long each backup type's run took in the synthetic history (seconds)
 synthetic_durations = {BackupTypes.S3: 1325.0, BackupTypes.DynamoDB: 212.0, BackupTypes.github: 96.0}
 
+# what each backup type finds (buckets, tables, repositories), how many of them are excluded, and the files of its backup
+synthetic_counts = {BackupTypes.S3: (14, 2, 218734), BackupTypes.DynamoDB: (9, 1, 0), BackupTypes.github: (37, 3, 0)}
+
+
+def get_synthetic_counts(backup_type: BackupTypes, days_ago: float, files_synced: int = 0, failed: int = 0) -> BackupCounts:
+    """
+    Made up counts of a run: what there is to back up grows a little from day to day.
+
+    :param backup_type: the type of the backup
+    :param days_ago: how long ago the run was
+    :param files_synced: the files an S3 run downloaded
+    :param failed: how many of what it found it could not back up
+    :return: the counts of the run
+    """
+    found, excluded, files = synthetic_counts[backup_type]
+    is_s3 = backup_type is BackupTypes.S3
+    return BackupCounts(found, found - excluded - failed, excluded, round(files - 310 * days_ago) if is_s3 else None, files_synced if is_s3 else None)
+
 
 def make_synthetic_history(history: BackupHistory, transfer_records: list):
     """
@@ -126,7 +146,9 @@ def make_synthetic_history(history: BackupHistory, transfer_records: list):
     error, one was cut short and one was a run from the command line.
     """
     no_transfer = TransferRecord(None, "transfer total", 0)
-    most_recent_start = time.time() - 46 * 60
+    # the runs start at 02:10 (the most recent one today, or yesterday if that is still to come), so that none of them goes past midnight
+    today_start = datetime.now().replace(hour=2, minute=10, second=7, microsecond=0).timestamp()
+    most_recent_start = today_start if today_start + max(synthetic_durations.values()) < time.time() else today_start - seconds_per_day
     for days_ago in range(5, -1, -1):
         started = most_recent_start - days_ago * seconds_per_day
         for backup_type in BackupTypes:
@@ -134,18 +156,21 @@ def make_synthetic_history(history: BackupHistory, transfer_records: list):
             ended = started + synthetic_durations[backup_type]
             if days_ago == 0:
                 transfer_total = get_transfer_total(backup_type, [transfer_record for transfer_record in transfer_records if transfer_record.backup_type is backup_type])
-                history.update(run_id, BackupStatus.completed, transfer_total, 0, len(synthetic_warnings.get(backup_type, [])), [], ended)
+                counts = get_synthetic_counts(backup_type, days_ago, files_synced=1284)
+                history.update(run_id, BackupStatus.completed, transfer_total, 0, len(synthetic_warnings.get(backup_type, [])), [], ended, counts)
             elif days_ago == 2:
                 # the system went down during this run
                 history.update(run_id, BackupStatus.interrupted, no_transfer, 0, 0, [])
             elif days_ago == 4 and backup_type is BackupTypes.github:
                 errors = ['could not fetch "example-org/billing-service" : could not resolve host github.com']
-                history.update(run_id, BackupStatus.completed_with_errors, TransferRecord(backup_type, "transfer total", 350 * 1024), len(errors), 0, errors, ended)
+                counts = get_synthetic_counts(backup_type, days_ago, failed=1)
+                history.update(run_id, BackupStatus.completed_with_errors, TransferRecord(backup_type, "transfer total", 350 * 1024), len(errors), 0, errors, ended, counts)
             else:
-                history.update(run_id, BackupStatus.completed, no_transfer, 0, 0, [], ended)
+                history.update(run_id, BackupStatus.completed, no_transfer, 0, 0, [], ended, get_synthetic_counts(backup_type, days_ago))
     started = most_recent_start - 3.5 * seconds_per_day
     run_id = history.start(BackupTypes.S3, UITypes.cli, started)
-    history.update(run_id, BackupStatus.completed, TransferRecord(BackupTypes.S3, "transfer total", 6 * 1024**2, cost=0.0005), 0, 0, [], started + 61.0)
+    counts = get_synthetic_counts(BackupTypes.S3, 3.5, files_synced=42)
+    history.update(run_id, BackupStatus.completed, TransferRecord(BackupTypes.S3, "transfer total", 6 * 1024**2, cost=0.0005), 0, 0, [], started + 61.0, counts)
 
 
 def main():
@@ -192,12 +217,13 @@ def main():
             backup_widget.splitter.setSizes(pane_heights)
             for display_box in backup_widget.display_boxes.values():
                 display_box.text_box.verticalScrollBar().setValue(0)  # most recent lines are at the top
-        for tab_widget, file_name in (
-            (dialog.run_backup_widget, "backup.png"),
-            (dialog.transfer_widget, "transfer.png"),
-            (dialog.history_widget, "history.png"),
-            (dialog.preferences_widget, "preferences.png"),
+        for tab_widget, file_name, width in (
+            (dialog.run_backup_widget, "backup.png", screenshot_width),
+            (dialog.transfer_widget, "transfer.png", screenshot_width),
+            (dialog.preferences_widget, "preferences.png", screenshot_width),
+            (dialog.history_widget, "history.png", history_screenshot_width),
         ):
+            dialog.resize(width, screenshot_height)
             dialog.tab_widget.setCurrentWidget(tab_widget)
             app.processEvents()
             screenshot_path = Path(output_directory, file_name)

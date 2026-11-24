@@ -36,7 +36,8 @@ It has a GUI for everyday use and a command line for scripts and scheduled jobs.
 - **GitHub:** each repository is cloned, and every branch is kept an exact mirror of the remote.
 - **Exclusions:** skip particular buckets, tables or repos, with comments to say why.
 - **Transfer and cost:** see how much each backup downloaded and approximately what AWS charges for it.
-- **History:** every backup run is on record, with when it ran, how it ended, what it downloaded and its errors. If a
+- **History:** every backup run is on record, with when it ran, how it ended, how many buckets, tables or repos and
+  files it backed up, what it downloaded and its errors. If a
   backup was cut short (e.g. by a system crash), bup says so the next time it is started.
 - **Logs:** warnings and errors are shown per backup type, with a detailed log of everything bup did.
 
@@ -267,6 +268,11 @@ with one row per backup type (S3, DynamoDB, GitHub) each time it is run, from th
 shows it in the "History" tab, most recent first. Each run has:
 
 - when it started and ended, and how long it took
+- how many buckets (S3), tables (DynamoDB) or repos (GitHub) it found, how many of them it backed up without an error,
+  and how many were excluded (**Found**, **Backed up**, **Excluded**). A dry run backs up nothing, so it has no
+  "Backed up" count.
+- for S3, the total number of files in the backup of the buckets it synced, whenever they were downloaded (**Files**),
+  and how many of them this run downloaded (**Files synced**)
 - what it received over the network, the average rate over the whole run, the DynamoDB read units, and the approximate
   AWS cost (see "Transfer and approximate AWS cost")
 - how many errors and warnings it had, and the error messages (the first 100 of them; the tab shows the first, and the
@@ -281,6 +287,9 @@ shows it in the "History" tab, most recent first. Each run has:
     was running. bup finds this out the next time the GUI is started, and says so in the status line at the bottom of
     the window (until bup is closed). What the backup had received up to the last bucket, table or repo it completed
     is on record, but not when it was cut short.
+
+A count is blank if the run did not get far enough to have it (e.g. it could not list the buckets), or if it was
+recorded by a bup that did not count it (0.17.0). A history database made by such a bup is kept and gains the counts.
 
 A backup records its row when it starts and completes it when it ends, which is how a run that never got to its end is
 found. If the history database can not be written, the backup still runs (and the application log says so).

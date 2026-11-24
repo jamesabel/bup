@@ -194,6 +194,11 @@ class GithubBackup(BupBase):
         if (repositories := self.get_repositories(preferences.github_token)) is None:
             return
 
+        self.counts.found = len(repositories)
+        self.counts.excluded = 0
+        if not dry_run:  # a dry run backs up nothing
+            self.counts.backed_up = 0
+
         outcome_counts = {repo_outcome: 0 for repo_outcome in RepoOutcomes}
         for github_repo in repositories:
             if self.stop_requested:
@@ -202,10 +207,12 @@ class GithubBackup(BupBase):
             repo_owner_and_name = str(github_repo)
             if is_excluded(repo_owner_and_name, exclusions):
                 self.info_out(f"{repo_owner_and_name} excluded")
+                self.counts.excluded += 1
             elif dry_run:
                 self.info_out(f"dry run {repo_owner_and_name}")
             else:
                 outcome_counts[self.backup_repo(github_repo, backup_dir)] += 1
+                self.counts.backed_up = outcome_counts[RepoOutcomes.pulled] + outcome_counts[RepoOutcomes.cloned]
 
         self.info_out(f"{len(repositories)} repos, {outcome_counts[RepoOutcomes.pulled]} pulls, {outcome_counts[RepoOutcomes.cloned]} clones, {len(exclusions)} excluded")
         if not dry_run:
