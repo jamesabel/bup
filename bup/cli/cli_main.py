@@ -34,8 +34,7 @@ def cli_main(args):
 
     ui_type = UITypes.cli
 
-    # Balsa is an attrs class in the older "@attrs" spelling, which ty does not take for one (it sees a class with no arguments)
-    balsa = Balsa(__application_name__, __author__)  # ty: ignore[too-many-positional-arguments]
+    balsa = Balsa(__application_name__, __author__)
     balsa.log_console_prefix = "\r"
     balsa.init_logger_from_args(args)
     log.info(f"__application_name__={__application_name__}")

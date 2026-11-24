@@ -1,23 +1,25 @@
 """
-The main window of the GUI: a dialog with a tab per function, which also runs the automatic backup schedule.
+The main window of the GUI: a dialog with a tab per function and a status line, which also runs the automatic backup schedule.
 """
 
 from datetime import datetime, timedelta
 import ctypes
 import os
 
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTabWidget, QMessageBox
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTabWidget, QMessageBox, QLabel
 from PyQt5.QtGui import QCloseEvent, QIcon
 from PyQt5.QtCore import QTimer, Qt
 
 from bup import __application_name__, __version__, __author__, get_preferences, UITypes
+from bup.backup_history import get_interrupted_message, mark_interrupted_backups
 from bup.gui.gui_util import to_positive_int
-from bup.gui import PreferencesWidget, RunBackupWidget, LogWidget, TransferWidget, BupAbout, get_icon_path
+from bup.gui import PreferencesWidget, RunBackupWidget, LogWidget, TransferWidget, HistoryWidget, BupAbout, get_icon_path
 
 
 class BupDialog(QDialog):
     """
-    The main window: the Backup, Preferences, Log, Transfer and About tabs.
+    The main window: the Backup, Preferences, Log, Transfer, History and About tabs, and below them the status line, which says
+    so if a backup was cut short the last time bup ran (e.g. by a system crash).
     """
 
     def __init__(self):
@@ -39,17 +41,27 @@ class BupDialog(QDialog):
         self.tab_widget = QTabWidget()
         self.layout().addWidget(self.tab_widget)
 
+        # A backup that was running when bup or the system died is still on record as running. Find those before the History tab
+        # reads the history, so that it shows them as not finished, and tell the user in the status line.
+        interrupted_message = get_interrupted_message(mark_interrupted_backups())
+
         self.run_backup_widget = RunBackupWidget()
         self.preferences_widget = PreferencesWidget()
         self.log_widget = LogWidget()
         self.transfer_widget = TransferWidget()
+        self.history_widget = HistoryWidget()
         self.about_widget = BupAbout()
 
         self.tab_widget.addTab(self.run_backup_widget, "Backup")
         self.tab_widget.addTab(self.preferences_widget, "Preferences")
         self.tab_widget.addTab(self.log_widget, "Log")
         self.tab_widget.addTab(self.transfer_widget, "Transfer")
+        self.tab_widget.addTab(self.history_widget, "History")
         self.tab_widget.addTab(self.about_widget, "About")
+
+        self.status_line = QLabel(interrupted_message)
+        self.status_line.setWordWrap(True)
+        self.layout().addWidget(self.status_line)
 
         preferences = get_preferences(UITypes.gui)
         width = to_positive_int(preferences.width)

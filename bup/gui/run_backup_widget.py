@@ -3,6 +3,7 @@ The GUI's "Backup" tab: the Start and Stop buttons, and for each backup type its
 """
 
 import threading
+import time
 from enum import Enum
 from datetime import datetime
 
@@ -12,10 +13,13 @@ from PyQt5.QtGui import QTextCursor
 from balsa import get_logger
 
 from bup import BackupTypes, S3Backup, DynamoDBBackup, GithubBackup, ExclusionPreferences, UITypes, __application_name__
+from bup.backup_history import BackupStatus
 from bup.gui import get_gui_preferences
 from bup.gui.gui_util import get_local_time_string, make_row, to_positive_int
 
 max_text_lines = 1000  # lines kept in a display box (the oldest are dropped)
+
+terminate_wait_ms = 1000  # how long a terminated backup thread is given to be gone
 
 backup_classes = {BackupTypes.S3: S3Backup, BackupTypes.DynamoDB: DynamoDBBackup, BackupTypes.github: GithubBackup}
 
@@ -225,11 +229,16 @@ class RunBackupWidget(QWidget):
     def wait_for_threads(self, timeout_ms: int = 5000):
         """
         Wait for a running backup to end (e.g. after stop(), on exit), and terminate its threads if it has not ended in time.
+        A backup that is terminated can not record its own end, so it is recorded here as stopped: it was ended on purpose, and
+        is not to be taken for a backup that a crash cut short the next time bup is started.
         """
         if self.run_all.isRunning():
             if not self.run_all.wait(timeout_ms):
-                for backup_type in self.backup_engines:
-                    self.backup_engines[backup_type].terminate()
+                for backup_engine in self.backup_engines.values():
+                    if backup_engine.isRunning():
+                        backup_engine.terminate()
+                        backup_engine.wait(terminate_wait_ms)
+                        backup_engine.record_history(BackupStatus.stopped, time.time())
                 self.run_all.terminate()
 
     def get_layout_key(self, backup_type: BackupTypes, display_type: DisplayTypes, height_width: str):

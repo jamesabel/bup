@@ -56,15 +56,17 @@ python -m bup <path> -s    # CLI with S3 backup
 
 **Preferences:** SQLite-backed via the `pref` library with `attrs` data classes. CLI and GUI have separate preference stores. Exclusion lists (per backup type) are sanitized by `ExclusionPreferences.get_no_comments()`: `#` starts a comment (whole-line or inline trailing), blank lines are dropped, and entries are whitespace-stripped (see README "Exclusions").
 
-**GUI:** PyQt5 tabbed dialog (`BupDialog`) with `RunBackupWidget`, `PreferencesWidget` (its `PreferencesLineEdit` and `PreferenceCheckBox` widgets are each bound to one preference by name - a new option is one line there), `LogWidget` (detailed application log via a logging handler), `TransferWidget` (bytes received and approximate AWS cost), and `BupAbout` tabs.
+**GUI:** PyQt5 tabbed dialog (`BupDialog`) with `RunBackupWidget`, `PreferencesWidget` (its `PreferencesLineEdit` and `PreferenceCheckBox` widgets are each bound to one preference by name - a new option is one line there), `LogWidget` (detailed application log via a logging handler), `TransferWidget` (bytes received and approximate AWS cost), `HistoryWidget` (the backup history, re-read on the `history_emitter` signal and when the tab is shown), and `BupAbout` tabs, and below the tabs the status line (`BupDialog.status_line`).
 
 **Transfer accounting:** `bup/transfer.py` holds `TransferRecord`, the cost math, and the `transfer_emitter` signal. `bup/aws_prices.py` gets each AWS region's prices from the public AWS Price List files and caches them in a SQLite DB (refetched weekly; no user-entered prices) - tests never fetch or touch the real cache (root `conftest.py`). Backups call `BupBase.transfer_out()` per bucket/table/repo that received data; the GUI shows these only in the Transfer tab and the log (not the Backup tab), the CLI prints them (see README "Transfer and approximate AWS cost").
+
+**Backup history:** `bup/backup_history.py` keeps every backup run in a SQLite DB (`BackupHistory`, one row per backup type per run: start/end, `BackupStatus`, transfer total, error and warning counts, error messages). `BupBase.run()` records the row when the run starts, updates it at each `transfer_out()` and completes it at the end, so a run that was cut short (crash, kill, power loss) stays on record as running; `BupDialog` calls `mark_interrupted_backups()` at startup, which marks those whose process (pid and process start time, via `psutil`) is gone as interrupted, and shows `get_interrupted_message()` in its status line. A backup that "Stop and Exit" has to terminate is recorded as stopped by `RunBackupWidget.wait_for_threads()`, so it is not taken for a cut-short one. Errors are counted in `BupBase.error_out()`, in the backup's thread (not in `_error_out()`, which in the GUI runs later in the GUI thread). Tests never touch the real history (root `conftest.py`).
 
 ## Code Style
 
 - ruff formatter with **192-character line length**
 - ruff lint: pycodestyle and pyflakes (`E`, `F`, `W`), ignoring E402, E501 and F401 (`[tool.ruff]` in `pyproject.toml`)
-- ty type checks the `bup` package (`[tool.ty]` in `pyproject.toml`). The check passes with nothing reported: fix what it finds, and keep `# ty: ignore[rule]` (with the reason in a comment) for what ty gets wrong, such as the `Balsa(...)` calls
+- ty type checks the `bup` package (`[tool.ty]` in `pyproject.toml`). The check passes with nothing reported: fix what it finds, and keep `# ty: ignore[rule]` (with the reason in a comment) for what ty gets wrong
 - Runtime type checking via `@typechecked()` decorator from typeguard
 - Every module, class and public function has a docstring (reST-style `:param:` / `:return:` where they add something)
 - Windows-specific path handling in `robust_os_calls.py` (long paths with `\\?\` prefix, readonly removal, retry logic for filesystem ops)
@@ -76,5 +78,6 @@ python -m bup <path> -s    # CLI with S3 backup
 - `github3.py` / `GitPython` - GitHub API and git operations
 - `PyQt5` - GUI framework (also used for QThread in CLI path)
 - `pref` / `sqlitedict` - Persistent preferences
+- `psutil` - Whether the process that recorded a backup as running still is (backup history)
 - `balsa` - Logging
 - `sentry_sdk` - Error tracking
