@@ -13,6 +13,7 @@ from PyQt5.QtCore import QTimer, Qt
 from bup import __application_name__, __version__, __author__, get_preferences, UITypes
 from bup.backup_history import get_interrupted_message, mark_interrupted_backups
 from bup.gui.gui_util import to_positive_int
+from bup.gui.status_line import status_emitter
 from bup.gui import PreferencesWidget, RunBackupWidget, LogWidget, TransferWidget, HistoryWidget, BupAbout, get_icon_path
 
 
@@ -62,6 +63,7 @@ class BupDialog(QDialog):
         self.status_line = QLabel(interrupted_message)
         self.status_line.setWordWrap(True)
         self.layout().addWidget(self.status_line)
+        status_emitter.status_signal.connect(self.status_line.setText)  # what the tabs have to say (e.g. that a backup was stopped)
 
         preferences = get_preferences(UITypes.gui)
         width = to_positive_int(preferences.width)
@@ -77,7 +79,8 @@ class BupDialog(QDialog):
     def autobackup_tick(self):
         """
         Called once a second: show when the next automatic backup is (or that a backup is running), and start it when it is due.
-        A backup is due when the backup period has passed since the most recent backup, or right away if there has not been one.
+        A backup is due when the backup period has passed since the most recent backup ended (completed or stopped by the user), or
+        right away if there has not been one.
         """
         if self.preferences_widget.automatic_backup_enable_check_box.isChecked():
             backup_period = self.preferences_widget.automatic_backup_period.value()  # QSpinBox guarantees an int
@@ -106,7 +109,9 @@ class BupDialog(QDialog):
 
             if self.run_backup_widget.run_all.isRunning():
                 ticks = "." * (self.tick_count % 4)
-                self.run_backup_widget.countdown_text.setText(f"running {ticks}")
+                # a backup that was asked to stop is still running until it gets to where it stops - say that it is on its way out
+                activity = "stopping" if self.run_backup_widget.run_all.stop_requested else "running"
+                self.run_backup_widget.countdown_text.setText(f"{activity} {ticks}")
         else:
             self.run_backup_widget.countdown_text.setText("(automatic backup not enabled)")
         self.tick_count += 1
