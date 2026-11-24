@@ -81,7 +81,7 @@ def mock_bup_dialog(qapp):
 
 def test_creation(mock_bup_dialog):
     dialog, _ = mock_bup_dialog
-    assert dialog.tab_widget.count() == 5
+    assert dialog.tab_widget.count() == 6
     assert dialog.autobackup_timer is not None
 
 
