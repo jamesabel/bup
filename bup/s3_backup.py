@@ -331,6 +331,7 @@ class S3Backup(BupBase):
         sync_result = bucket.sync_result
         backed_up_size = s3_total_size - sync_result.get_size(S3SyncOutcome.skipped) - sync_result.get_size(S3SyncOutcome.failed)
         local_size, local_count = get_dir_size(bucket.destination)
+        self.counts.files = (self.counts.files or 0) + local_count
         level, message = compare_backup_sizes(backed_up_size, local_size)
         output_routines = {"error": self.error_out, "info": log.info}
         output_routines[level](
@@ -444,6 +445,11 @@ class S3Backup(BupBase):
             self.error_out(f"could not list S3 buckets - check credentials and connectivity : {e}")
             return
         self.info_out(f"found {len(bucket_names)} buckets")
+        self.counts.found = len(bucket_names)
+        self.counts.excluded = 0
+        if not dry_run:  # a dry run backs up nothing
+            self.counts.backed_up = 0
+            self.counts.files_synced = 0
 
         count = 0  # buckets backed up, or dry run
         total_synced_count = 0  # objects downloaded (or that a sync would download, for a dry run)
@@ -455,6 +461,7 @@ class S3Backup(BupBase):
 
             if bucket_name in exclusions:
                 self.info_out(f"excluding {bucket_name}")
+                self.counts.excluded += 1
                 continue
 
             self.info_out(f"dry run {bucket_name}" if dry_run else f"{bucket_name}")
@@ -474,6 +481,8 @@ class S3Backup(BupBase):
                 self.info_out(f"{bucket_name} : {synced_count} files would be synced")
                 continue
 
+            # before the transfer is reported, since that is when the history is updated
+            self.counts.files_synced = total_synced_count
             self.sync_transfer_out(bucket)
 
             if self.stop_requested:
@@ -482,6 +491,7 @@ class S3Backup(BupBase):
             synced_buckets.append(bucket)
             if self.check_bucket_size(bucket) and not bucket.get_failed():
                 count += 1
+                self.counts.backed_up = count
 
         if dry_run:
             self.info_out(f"{len(bucket_names)} buckets, {count} dry run, {total_synced_count} files would be synced, {len(exclusions)} excluded")

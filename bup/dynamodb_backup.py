@@ -137,6 +137,10 @@ class DynamoDBBackup(BupBase):
             self.error_out(f"could not list DynamoDB tables - check credentials and connectivity : {e}")
             return
         self.info_out(f"found {len(tables)} DynamoDB tables")
+        self.counts.found = len(tables)
+        self.counts.excluded = 0
+        if not dry_run:  # a dry run backs up nothing
+            self.counts.backed_up = 0
 
         count = 0
         for table_name in tables:
@@ -145,12 +149,14 @@ class DynamoDBBackup(BupBase):
 
             if table_name in exclusions:
                 self.info_out(f"excluding {table_name}")
+                self.counts.excluded += 1
             elif dry_run:
                 self.info_out(f"dry run {table_name}")
             else:
                 self.info_out(f"{table_name}")
                 if self.backup_table(preferences, table_name):
                     count += 1
+                    self.counts.backed_up = count
 
         self.info_out(f"{len(tables)} tables, {count} backed up, {len(exclusions)} excluded")
         if not dry_run:

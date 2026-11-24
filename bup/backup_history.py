@@ -1,6 +1,6 @@
 """
-The history of backup runs: when each backup started and ended, how it ended, what it received over the network, approximately what
-that cost and what errors it had.
+The history of backup runs: when each backup started and ended, how it ended, what it backed up (how many buckets, tables or
+repositories, and files), what it received over the network, approximately what that cost and what errors it had.
 
 The history is kept in a local SQLite database, with one row per backup type each time it is run (the GUI runs every backup type at
 once, the CLI the ones it is asked for). A backup writes its row when it starts, updates it as it goes and completes it when it ends,
@@ -50,6 +50,20 @@ class BackupStatus(Enum):
     interrupted = "did not finish"  # never got to its end: bup was closed or crashed, or the system crashed or was shut down
 
 
+@dataclass
+class BackupCounts:
+    """
+    What a backup run counted. A count is None if the run has not counted it (yet, or it was recorded by a bup that did not), or if
+    its backup type does not have it.
+    """
+
+    found: Optional[int] = None  # the buckets (S3), tables (DynamoDB) or repositories (GitHub) there are
+    backed_up: Optional[int] = None  # those that were backed up without an error
+    excluded: Optional[int] = None  # those that were not backed up because they are in the exclusion list
+    files: Optional[int] = None  # S3: the files in the backup of the buckets that were synced, whenever they were downloaded
+    files_synced: Optional[int] = None  # S3: the files that were downloaded in this run
+
+
 @dataclass(frozen=True)
 class BackupRun:
     """
@@ -70,6 +84,7 @@ class BackupRun:
     error_count: int
     warning_count: int
     errors: Tuple[str, ...]  # the error messages (the first max_recorded_errors of them)
+    counts: BackupCounts  # how many buckets, tables or repositories, and files
 
     @property
     def duration(self) -> Optional[float]:
@@ -87,12 +102,15 @@ class BackupRun:
         return None if duration is None or duration <= 0.0 else self.received_bytes / duration
 
 
-# the columns of the history table, which are the fields of BackupRun in order
-history_columns = "id, backup_type, ui_type, pid, process_start, started, ended, status, received_bytes, read_units, cost, error_count, warning_count, errors"
+# the columns of the history table that are the fields of BackupCounts, in order
+count_columns = ("found_count", "backed_up_count", "excluded_count", "file_count", "synced_file_count")
+
+# the columns of the history table, which are the fields of BackupRun in order (and of its BackupCounts, last)
+history_columns = "id, backup_type, ui_type, pid, process_start, started, ended, status, received_bytes, read_units, cost, error_count, warning_count, errors, " + ", ".join(count_columns)
 
 
 def _to_backup_run(row: tuple) -> BackupRun:
-    run_id, backup_type, ui_type, pid, process_start, started, ended, status, received_bytes, read_units, cost, error_count, warning_count, errors = row
+    run_id, backup_type, ui_type, pid, process_start, started, ended, status, received_bytes, read_units, cost, error_count, warning_count, errors, *counts = row
     return BackupRun(
         run_id,
         None if backup_type is None else BackupTypes[backup_type],
@@ -108,6 +126,7 @@ def _to_backup_run(row: tuple) -> BackupRun:
         error_count,
         warning_count,
         tuple(json.loads(errors)),
+        BackupCounts(*counts),
     )
 
 
@@ -149,9 +168,24 @@ class BackupHistory:
                 "started REAL NOT NULL, ended REAL, status TEXT NOT NULL, received_bytes INTEGER NOT NULL DEFAULT 0, read_units REAL NOT NULL DEFAULT 0.0, cost REAL, "
                 "error_count INTEGER NOT NULL DEFAULT 0, warning_count INTEGER NOT NULL DEFAULT 0, errors TEXT NOT NULL DEFAULT '[]')"
             )
+            if self._get_missing_columns(connection):
+                # The database was made by a bup that did not have these columns (bup 0.17.0 had no counts). Its runs stay as they
+                # are, with no counts. More than one backup can open the history at the same time, so the columns are looked for
+                # again once the database is locked: only one of them adds a column.
+                connection.execute("BEGIN IMMEDIATE")
+                for column in self._get_missing_columns(connection):
+                    connection.execute(f"ALTER TABLE backup_runs ADD COLUMN {column} INTEGER")
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path)
+
+    @staticmethod
+    def _get_missing_columns(connection: sqlite3.Connection) -> List[str]:
+        """
+        :return: the count columns that the history table of this database does not have
+        """
+        existing_columns = {row[1] for row in connection.execute("PRAGMA table_info(backup_runs)")}
+        return [column for column in count_columns if column not in existing_columns]
 
     def start(self, backup_type: Optional[BackupTypes], ui_type: UITypes, started: Optional[float] = None) -> int:
         """
@@ -180,7 +214,17 @@ class BackupHistory:
             raise sqlite3.Error("no id for the new backup run")  # an INSERT of one row always has one
         return run_id
 
-    def update(self, run_id: int, status: BackupStatus, transfer_total: TransferRecord, error_count: int, warning_count: int, errors: Iterable[str], ended: Optional[float] = None):
+    def update(
+        self,
+        run_id: int,
+        status: BackupStatus,
+        transfer_total: TransferRecord,
+        error_count: int,
+        warning_count: int,
+        errors: Iterable[str],
+        ended: Optional[float] = None,
+        counts: Optional[BackupCounts] = None,
+    ):
         """
         Record how a backup run is going, or how it ended.
 
@@ -191,10 +235,14 @@ class BackupHistory:
         :param warning_count: how many warnings it has had
         :param errors: its error messages (the first max_recorded_errors are kept)
         :param ended: when it ended (epoch seconds), None if it has not (or when is not known)
+        :param counts: what it has counted, nothing if not given
         """
+        counts = BackupCounts() if counts is None else counts
         with closing(self._connect()) as connection, connection:
             connection.execute(
-                "UPDATE backup_runs SET status = ?, ended = ?, received_bytes = ?, read_units = ?, cost = ?, error_count = ?, warning_count = ?, errors = ? WHERE id = ?",
+                "UPDATE backup_runs SET status = ?, ended = ?, received_bytes = ?, read_units = ?, cost = ?, error_count = ?, warning_count = ?, errors = ?, "
+                + ", ".join(f"{column} = ?" for column in count_columns)
+                + " WHERE id = ?",
                 (
                     status.name,
                     ended,
@@ -204,6 +252,7 @@ class BackupHistory:
                     error_count,
                     warning_count,
                     json.dumps(list(errors)[:max_recorded_errors]),
+                    *dataclasses.astuple(counts),
                     run_id,
                 ),
             )

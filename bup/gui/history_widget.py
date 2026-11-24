@@ -1,10 +1,11 @@
 """
-The GUI's "History" tab: the backup runs on record - when each started and ended, how it ended, what it received and its errors.
+The GUI's "History" tab: the backup runs on record - when each started and ended, how it ended, what it backed up and received,
+and its errors.
 """
 
 import sqlite3
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
 
 from PyQt5.QtGui import QShowEvent
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
@@ -18,12 +19,32 @@ log = get_logger(__application_name__)
 
 max_history_rows = 1000  # the most recent runs shown (the database keeps them all)
 
-columns = ["Started", "Ended", "Duration", "Backup", "Run from", "Status", "Received", "Average rate", "Read units", "Approx. cost", "Errors", "Warnings", "Error details"]
+columns = [
+    "Started",
+    "Ended",
+    "Duration",
+    "Backup",
+    "Run from",
+    "Status",
+    "Found",
+    "Backed up",
+    "Excluded",
+    "Files",
+    "Files synced",
+    "Received",
+    "Average rate",
+    "Read units",
+    "Approx. cost",
+    "Errors",
+    "Warnings",
+    "Error details",
+]
 
 history_note = (
     "One row per backup type each time it is run, from the GUI or the command line, most recent first. A backup that did not finish "
-    "was cut short: bup was closed or crashed, or the system crashed or was shut down, while it was running. Costs are approximate "
-    "(see the Transfer tab)."
+    "was cut short: bup was closed or crashed, or the system crashed or was shut down, while it was running. Found, Backed up and "
+    "Excluded are counts of buckets (S3), tables (DynamoDB) or repositories (GitHub). Files is the files in the backup of the S3 "
+    "buckets, and Files synced is how many of them this run downloaded. Costs are approximate (see the Transfer tab)."
 )
 
 
@@ -36,6 +57,14 @@ def format_end_time(started: float, ended: float) -> str:
     if datetime.fromtimestamp(ended).date() == datetime.fromtimestamp(started).date():
         return datetime.fromtimestamp(ended).time().isoformat(timespec="seconds")
     return format_time(ended)
+
+
+def format_count(count: Optional[int]) -> str:
+    """
+    :param count: a count of a backup run, None if the run does not have it
+    :return: the count with thousands separators, e.g. "12,345", or "" if there is none
+    """
+    return "" if count is None else f"{count:,}"
 
 
 def get_row_text(backup_run: BackupRun) -> List[str]:
@@ -51,6 +80,11 @@ def get_row_text(backup_run: BackupRun) -> List[str]:
         "" if backup_run.backup_type is None else backup_run.backup_type.name,
         backup_run.ui_type.name.upper(),
         backup_run.status.value,
+        format_count(backup_run.counts.found),
+        format_count(backup_run.counts.backed_up),
+        format_count(backup_run.counts.excluded),
+        format_count(backup_run.counts.files),
+        format_count(backup_run.counts.files_synced),
         format_size(backup_run.received_bytes),
         "" if average_rate is None or backup_run.received_bytes == 0 else f"{format_size(round(average_rate))}/s",
         f"{backup_run.read_units:g}" if backup_run.read_units > 0.0 else "",

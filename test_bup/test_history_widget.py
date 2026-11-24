@@ -12,7 +12,7 @@ import pytest
 from PyQt5.QtWidgets import QCheckBox, QLabel, QSpinBox, QWidget
 
 from bup import BackupTypes, BupBase, UITypes, backup_history
-from bup.backup_history import BackupStatus, format_time, get_backup_history
+from bup.backup_history import BackupCounts, BackupStatus, format_time, get_backup_history
 from bup.gui.history_widget import HistoryWidget, columns
 from bup.gui.status_line import status_emitter
 from bup.transfer import TransferRecord
@@ -47,7 +47,8 @@ def test_backup_runs_are_shown_most_recent_first(qapp):
     started = datetime(2026, 11, 20, 12, 0, 0).timestamp()
     run_id = history.start(BackupTypes.DynamoDB, UITypes.cli, started=started)
     transfer_total = TransferRecord(BackupTypes.DynamoDB, "transfer total", 2048 * 3725, 12.5, 0.25)
-    history.update(run_id, BackupStatus.completed_with_errors, transfer_total, 2, 1, ["first error", "second error"], ended=started + 3725.0)
+    counts = BackupCounts(found=12, backed_up=10, excluded=2, files=1234567, files_synced=89)
+    history.update(run_id, BackupStatus.completed_with_errors, transfer_total, 2, 1, ["first error", "second error"], ended=started + 3725.0, counts=counts)
     history.start(BackupTypes.github, UITypes.gui, started=datetime(2026, 11, 21, 8, 30, 15).timestamp())
 
     history_widget = HistoryWidget()
@@ -60,6 +61,11 @@ def test_backup_runs_are_shown_most_recent_first(qapp):
         "Backup": "github",
         "Run from": "GUI",
         "Status": "running",
+        "Found": "",  # not counted yet
+        "Backed up": "",
+        "Excluded": "",
+        "Files": "",
+        "Files synced": "",
         "Received": "0 B",
         "Average rate": "",
         "Read units": "",
@@ -75,6 +81,11 @@ def test_backup_runs_are_shown_most_recent_first(qapp):
         "Backup": "DynamoDB",
         "Run from": "CLI",
         "Status": "completed with errors",
+        "Found": "12",
+        "Backed up": "10",
+        "Excluded": "2",
+        "Files": "1,234,567",
+        "Files synced": "89",
         "Received": "7.3 MB",
         "Average rate": "2.0 KB/s",
         "Read units": "12.5",
