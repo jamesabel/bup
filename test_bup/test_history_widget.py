@@ -4,6 +4,7 @@ All tests, fixtures and helpers in this file are AI-authored (Claude Code).
 The repository's conftest.py gives every test an empty backup history of its own.
 """
 
+import time
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
@@ -13,6 +14,7 @@ from PyQt5.QtWidgets import QCheckBox, QLabel, QSpinBox, QWidget
 from bup import BackupTypes, BupBase, UITypes, backup_history
 from bup.backup_history import BackupStatus, format_time, get_backup_history
 from bup.gui.history_widget import HistoryWidget, columns
+from bup.gui.status_line import status_emitter
 from bup.transfer import TransferRecord
 
 no_transfer = TransferRecord(None, "transfer total", 0)
@@ -231,3 +233,38 @@ def test_status_line_says_it_only_the_first_time_bup_is_started_again(make_bup_d
 
     assert dialog.status_line.text() == ""
     assert dialog.history_widget.table.item(0, columns.index("Status")).text() == "did not finish"  # still in the history
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_main_window_shows_the_status_in_its_status_line(make_bup_dialog):
+    dialog = make_bup_dialog()
+
+    status_emitter.status_signal.emit("Backup stopped at 2026-11-24 10:00:00.")
+
+    assert dialog.status_line.text() == "Backup stopped at 2026-11-24 10:00:00."
+
+
+def _tick_while_running(dialog, stop_requested: bool) -> str:
+    """
+    :return: what is shown for the next backup while a backup is running, with the automatic backup enabled
+    """
+    dialog.preferences_widget.automatic_backup_enable_check_box.setChecked(True)
+    dialog.preferences_widget.automatic_backup_period.setValue(1)
+    dialog.run_backup_widget.most_recent_backup = int(time.time())
+    dialog.run_backup_widget.run_all.isRunning.return_value = True
+    dialog.run_backup_widget.run_all.stop_requested = stop_requested
+    dialog.autobackup_tick()
+    return dialog.run_backup_widget.countdown_text.text()
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_running_backup_is_shown_as_running(make_bup_dialog):
+    assert _tick_while_running(make_bup_dialog(), stop_requested=False).startswith("running")
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_backup_that_was_asked_to_stop_is_not_shown_as_running(make_bup_dialog):
+    text = _tick_while_running(make_bup_dialog(), stop_requested=True)
+
+    assert text.startswith("stopping")
+    assert "running" not in text

@@ -13,13 +13,16 @@ from PyQt5.QtGui import QTextCursor
 from balsa import get_logger
 
 from bup import BackupTypes, S3Backup, DynamoDBBackup, GithubBackup, ExclusionPreferences, UITypes, __application_name__
-from bup.backup_history import BackupStatus
+from bup.backup_history import BackupStatus, format_time
 from bup.gui import get_gui_preferences
 from bup.gui.gui_util import get_local_time_string, make_row, to_positive_int
+from bup.gui.status_line import status_emitter
 
 max_text_lines = 1000  # lines kept in a display box (the oldest are dropped)
 
 terminate_wait_ms = 1000  # how long a terminated backup thread is given to be gone
+
+stopping_text = "Stop requested. The backup is stopping, which can take a while."
 
 backup_classes = {BackupTypes.S3: S3Backup, BackupTypes.DynamoDB: DynamoDBBackup, BackupTypes.github: GithubBackup}
 
@@ -28,8 +31,8 @@ log = get_logger(__application_name__)
 
 class RunAll(QThread):
     """
-    Runs every backup type at the same time, each in its own thread, and waits for them all. A run that was not stopped is recorded as
-    the most recent backup, which is what the automatic backup counts from.
+    Runs every backup type at the same time, each in its own thread, and waits for them all. The automatic backup counts from when
+    the run ended. Only a run that was not stopped is a completed backup, which is what bup counts from the next time it is started.
     """
 
     def __init__(self, widget):
@@ -45,9 +48,20 @@ class RunAll(QThread):
             self.widget.backup_engines[backup_type].start()
         for backup_type in self.widget.backup_engines:
             self.widget.backup_engines[backup_type].wait()
-        if not any(self.widget.backup_engines[backup_type].stop_requested for backup_type in self.widget.backup_engines):
-            # a stopped run isn't a completed backup - don't reset the auto-backup countdown
-            self.widget.most_recent_backup = int(round(datetime.now().timestamp()))
+        now = int(round(datetime.now().timestamp()))
+        # The automatic backup counts from here, whether the run completed or was stopped: the user who stopped a backup does not want
+        # the automatic backup to start it again the next second.
+        self.widget.most_recent_backup = now
+        if not self.stop_requested:
+            # a stopped run isn't a completed backup - the next bup still has a backup to do
+            self.widget.most_recent_completed_backup = now
+
+    @property
+    def stop_requested(self) -> bool:
+        """
+        :return: True if the backups have been asked to stop (which a running backup takes a while to do)
+        """
+        return any(backup_engine.stop_requested for backup_engine in self.widget.backup_engines.values())
 
 
 class DisplayTypes(Enum):
@@ -165,7 +179,8 @@ class RunBackupWidget(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.most_recent_backup = None
+        self.most_recent_backup = None  # when the most recent run ended (epoch seconds), which the automatic backup counts from
+        self.most_recent_completed_backup = None  # when the most recent run that was not stopped ended - this is the one that is saved
 
         self.top_level_layout = QVBoxLayout()
         self.setLayout(self.top_level_layout)
@@ -185,7 +200,9 @@ class RunBackupWidget(QWidget):
         self.backup_status = {}
         self.backup_engines = {}
         self.run_all = RunAll(self)
+        self.run_all.finished.connect(self.run_all_finished)
         self._backup_directory_error_logged = False
+        self.stop_in_status_line = False  # True while the status line says that a backup is stopping or was stopped
 
         for backup_type in BackupTypes:
             self.backup_status[backup_type] = BackupWidget(backup_type)
@@ -216,15 +233,34 @@ class RunBackupWidget(QWidget):
                 self._backup_directory_error_logged = True
             return False
         self._backup_directory_error_logged = False
+        if self.stop_in_status_line:
+            # a new backup is what there is to know now, not that the one before it was stopped
+            status_emitter.status_signal.emit("")
+            self.stop_in_status_line = False
+        for backup_engine in self.backup_engines.values():
+            backup_engine.stop_event.clear()  # a stop request is for the run it was made in, and this is a new one
         self.run_all.start()
         return True
 
     def stop(self):
         """
-        Ask every backup to stop (see BupBase.request_stop()).
+        Ask every backup to stop (see BupBase.request_stop()), and tell the user that it is being done: a backup can take a while to
+        get to where it stops.
         """
         for backup_type in self.backup_engines:
             self.backup_engines[backup_type].request_stop()
+        if self.run_all.isRunning():
+            status_emitter.status_signal.emit(stopping_text)
+            self.stop_in_status_line = True
+
+    def run_all_finished(self):
+        """
+        The run has ended (connected to the signal for that, so this runs in the GUI thread): if it was stopped, tell the user that
+        it now has.
+        """
+        if self.run_all.stop_requested:
+            status_emitter.status_signal.emit(f"Backup stopped at {format_time(datetime.now().timestamp())}.")
+            self.stop_in_status_line = True
 
     def wait_for_threads(self, timeout_ms: int = 5000):
         """
@@ -250,7 +286,8 @@ class RunBackupWidget(QWidget):
 
     def save_state(self):
         """
-        Save the exclusions, the sizes of the display boxes and the time of the most recent backup, for the next time bup is run.
+        Save the exclusions, the sizes of the display boxes and the time of the most recent completed backup, for the next time bup
+        is run.
         """
         preferences = get_gui_preferences()
         for backup_type in BackupTypes:
@@ -259,7 +296,7 @@ class RunBackupWidget(QWidget):
             for display_type in DisplayTypes:
                 setattr(preferences, self.get_layout_key(backup_type, display_type, "height"), self.backup_status[backup_type].display_boxes[display_type].height())
                 setattr(preferences, self.get_layout_key(backup_type, display_type, "width"), self.backup_status[backup_type].display_boxes[display_type].width())
-        preferences.most_recent_backup = self.most_recent_backup
+        preferences.most_recent_backup = self.most_recent_completed_backup
 
     def restore_state(self):
         """
@@ -275,3 +312,4 @@ class RunBackupWidget(QWidget):
                     self.backup_status[backup_type].display_boxes[display_type].resize(width, height)
 
         self.most_recent_backup = preferences.most_recent_backup
+        self.most_recent_completed_backup = preferences.most_recent_backup

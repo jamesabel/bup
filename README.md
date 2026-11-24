@@ -74,6 +74,12 @@ pip install bup
 Run `bup` with no arguments for the GUI. Set the backup directory and credentials in the Preferences tab, then press
 Start in the Backup tab (or enable the automatic backup).
 
+Stop asks the running backups to stop, which they do at the next point where they can, so it can take a while. The
+status line at the bottom of the window says that the backup is stopping, and then when it stopped. A backup you
+stopped is not started again by the automatic backup until the backup period has passed since the stop (press Start to
+run it sooner). It is not a completed backup: if bup is closed and started again, the automatic backup counts from the
+most recent backup that completed.
+
 Give `bup` a backup directory and what to back up for the command line:
 
 ```
