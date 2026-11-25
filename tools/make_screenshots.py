@@ -106,9 +106,10 @@ synthetic_s3_tier2_request_prices = {
     "GLACIER": 0.0004,
     "DEEP_ARCHIVE": 0.0004,
 }
+synthetic_s3_retrieval_prices = {"STANDARD_IA": 0.01, "ONEZONE_IA": 0.01, "GLACIER_IR": 0.03}
 synthetic_prices = [
-    AWSPrices("us-east-1", 0.09, 0.125, time.time(), 0.005, synthetic_s3_tier2_request_prices),
-    AWSPrices("eu-west-1", 0.09, 0.1415, time.time(), 0.005, synthetic_s3_tier2_request_prices),
+    AWSPrices("us-east-1", 0.09, 0.125, time.time(), 0.005, synthetic_s3_tier2_request_prices, synthetic_s3_retrieval_prices),
+    AWSPrices("eu-west-1", 0.09, 0.1415, time.time(), 0.005, synthetic_s3_tier2_request_prices, synthetic_s3_retrieval_prices),
 ]
 
 
@@ -124,7 +125,7 @@ def make_synthetic_transfer_records() -> list:
         sync_tier_counts = {(S3RequestTier.tier1, "STANDARD"): 2 + object_count // 1000, (S3RequestTier.tier2, storage_class): sync_request_count}
         verify_tier_counts = {(S3RequestTier.tier2, storage_class): object_count}
         for name, size, tier_counts in ((bucket_name, received_bytes, sync_tier_counts), (f"{bucket_name} (verification)", 0, verify_tier_counts)):
-            cost = get_s3_cost(size, tier_counts, prices[region])
+            cost = get_s3_cost(size, tier_counts, {storage_class: size}, prices[region])  # the objects that were downloaded have the retrieval fee of their storage class
             transfer_records.append(TransferRecord(BackupTypes.S3, name, size, cost=cost, region=region, requests=get_charged_request_count(tier_counts)))
     for table_name, received_bytes, read_units in (("customers", 12 * 1024**2, 1500.0), ("orders", 180 * 1024**2, 22500.0)):
         cost = get_dynamodb_scan_cost(received_bytes, read_units, prices["us-east-1"])

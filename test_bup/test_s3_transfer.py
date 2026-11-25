@@ -165,6 +165,40 @@ def test_requests_are_reported_and_priced_by_tier_and_storage_class(tmp_path, on
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_retrieval_fee_of_the_storage_classes_that_have_one_is_in_the_cost(tmp_path, online):
+    megabyte = 1024**2
+    destination = Path(tmp_path, "s3", "my-bucket")
+    destination.mkdir(parents=True)
+    Path(destination, "standard.bin").write_bytes(b"x" * megabyte)
+    Path(destination, "glacier_ir.bin").write_bytes(b"x" * 2 * megabyte)
+    Path(destination, "standard_ia.bin").write_bytes(b"x" * 4 * megabyte)
+    fake_s3 = FakeS3({"my-bucket": make_sync_result([downloaded("standard.bin", megabyte), downloaded("glacier_ir.bin", 2 * megabyte), downloaded("standard_ia.bin", 4 * megabyte)])})
+    # the bytes S3 sent, by the storage class of the object
+    fake_s3.sync_requests["my-bucket"] = [("GetObject", "STANDARD", megabyte), ("GetObject", "GLACIER_IR", 2 * megabyte), ("GetObject", "STANDARD_IA", 4 * megabyte)]
+
+    backup = run_s3_backup(tmp_path, fake_s3)
+
+    transfer_out_cost = 7 * megabyte / bytes_per_gb * 0.09
+    request_cost = (0.0004 + 0.01 + 0.001) / 1000
+    retrieval_cost = 2 * megabyte / bytes_per_gb * 0.03 + 4 * megabyte / bytes_per_gb * 0.01  # STANDARD has no retrieval fee
+    assert backup.transfer_records == [
+        TransferRecord(BackupTypes.S3, "my-bucket", 7 * megabyte, cost=pytest.approx(transfer_out_cost + request_cost + retrieval_cost), region="us-east-1", requests=3)
+    ]
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_retrieval_fee_is_of_the_bytes_s3_sent_also_for_a_download_that_failed(tmp_path, online):
+    # the object is not in the backup, so nothing was received, and AWS still charges for what S3 sent
+    Path(tmp_path, "s3", "my-bucket").mkdir(parents=True)
+    fake_s3 = FakeS3({"my-bucket": make_sync_result([S3SyncObject("broken.bin", bytes_per_gb, S3SyncOutcome.failed, reason="connection lost")])})
+    fake_s3.sync_requests["my-bucket"] = [("GetObject", "GLACIER_IR", bytes_per_gb)]
+
+    backup = run_s3_backup(tmp_path, fake_s3)
+
+    assert backup.transfer_records == [TransferRecord(BackupTypes.S3, "my-bucket", 0, cost=pytest.approx(0.03 + 0.01 / 1000), region="us-east-1", requests=1)]
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
 def test_requests_of_a_bucket_that_downloaded_nothing_are_reported(tmp_path, online):
     Path(tmp_path, "s3", "my-bucket").mkdir(parents=True)
     fake_s3 = FakeS3({"my-bucket": make_sync_result([])})

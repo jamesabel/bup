@@ -243,8 +243,11 @@ CLI prints the same lines in its regular output.
   were made to S3 for the bucket, which awsimple counts (`S3Access.usage`). A request is priced by its tier: a
   listing is tier 1 (about $0.005 per 1000), and a request for an object or its metadata is tier 2, priced by the
   storage class of the object (about $0.0004 per 1000 for STANDARD, $0.001 for STANDARD_IA and ONEZONE_IA, and
-  $0.01 for GLACIER_IR). A bucket is reported even when nothing was downloaded, since finding that out makes
-  requests. With the verification, each bucket has a second row for the requests of its verification, e.g.:
+  $0.01 for GLACIER_IR). Some storage classes also have a retrieval fee per GB read, on top of the data transfer
+  (about $0.01 per GB for STANDARD_IA and ONEZONE_IA, and $0.03 for GLACIER_IR), which is in the cost for the bytes
+  S3 sent of each storage class (awsimple counts these too). A bucket is reported even when nothing was downloaded,
+  since finding that out makes requests. With the verification, each bucket has a second row for the requests of
+  its verification, e.g.:
 
   ```
   my-bucket : received 1.2 GB, 1310 S3 requests, approximately $0.1093 before any AWS free allowance
@@ -270,8 +273,8 @@ The costs are estimates:
 - AWS does not charge for the first 100 GB of data transfer out a month, shared by the whole AWS account. bup does
   not know how much of that allowance is left, so the cost shown is before the allowance - the most the transfer could
   cost, not necessarily what you are billed.
-- The retrieval fee that some S3 storage classes have per GB read (e.g. STANDARD_IA and GLACIER_IR) is not
-  included.
+- The S3 retrieval fee is for the bytes S3 sent, so it includes a download that failed part way or was tried
+  again, while "received" is the size of the objects that were downloaded.
 - The S3 requests that are not for one bucket are not included: the listing of the buckets, and a request for
   the region of each bucket.
 - A storage class that the price list has no request price for is priced as STANDARD.

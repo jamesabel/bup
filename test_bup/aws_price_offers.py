@@ -77,9 +77,10 @@ def _request_terms(sku: str, price_per_request: str, unit: str = "Requests") -> 
 
 def make_s3_offer(usage_type_prefix: str = "", standard_tier2_price_per_request: str = "0.0000004000") -> dict:
     """
-    An AmazonS3 price list file: the tier 1 requests, and the tier 2 requests of STANDARD, STANDARD_IA and GLACIER_IR (and of no other
-    storage class), plus products that must not be mistaken for them - the annotation requests (in the group of the STANDARD requests,
-    at another price here to tell them apart), the S3 Tables requests and the retrieval fee of a storage class (per GB).
+    An AmazonS3 price list file: the tier 1 requests, the tier 2 requests of STANDARD, STANDARD_IA and GLACIER_IR (and of no other
+    storage class), and the retrieval fees of STANDARD_IA and GLACIER_IR, plus products that must not be mistaken for them - the
+    annotation requests (in the group of the STANDARD requests, at another price here to tell them apart), the S3 Tables requests, the
+    S3 Select fee of a storage class and the retrieval fee of a restore.
     :param usage_type_prefix: what the usage types of the region start with, e.g. "EU-" for eu-west-1 (nothing for us-east-1)
     """
     return {
@@ -91,7 +92,10 @@ def make_s3_offer(usage_type_prefix: str = "", standard_tier2_price_per_request:
             "TABLES2": _request_product("S3-API-Tables-Tier2", f"{usage_type_prefix}Tables-Requests-Tier2", None),
             "SIA2": _request_product("S3-API-SIA-Tier2", f"{usage_type_prefix}Requests-SIA-Tier2"),
             "GIR2": _request_product("S3-API-GIR-Tier2", f"{usage_type_prefix}Requests-GIR-Tier2", None),  # as in the real files: not every region has a product family for it
-            "GIRRETRIEVAL": _request_product("S3-API-GIR-Retrieval", f"{usage_type_prefix}Retrieval-GIR"),
+            "GIRRETRIEVAL": _request_product("S3-API-GIR-Retrieval", f"{usage_type_prefix}Retrieval-GIR", None),
+            "SIARETRIEVAL": _request_product("S3-API-SIA-Retrieval", f"{usage_type_prefix}Retrieval-SIA"),
+            "SIASELECT": _request_product("S3-API-SIA-Select-Returned", f"{usage_type_prefix}Select-Returned-SIA-Bytes"),
+            "RESTORE": {"productFamily": "Fee", "attributes": {"usagetype": f"{usage_type_prefix}Expedited-Retrieval-Bytes", "feeCode": "S3-Expedited-Retrieval"}},
             "STORAGE": {"productFamily": "Storage", "attributes": {"usagetype": f"{usage_type_prefix}TimedStorage-ByteHrs", "storageClass": "General Purpose"}},
         },
         "terms": {
@@ -104,6 +108,9 @@ def make_s3_offer(usage_type_prefix: str = "", standard_tier2_price_per_request:
                 "SIA2": _request_terms("SIA2", "0.0000010000"),
                 "GIR2": _request_terms("GIR2", "0.0000100000"),
                 "GIRRETRIEVAL": _request_terms("GIRRETRIEVAL", "0.0300000000", "GB"),
+                "SIARETRIEVAL": _request_terms("SIARETRIEVAL", "0.0100000000", "GB"),
+                "SIASELECT": _request_terms("SIASELECT", "0.0200000000", "GB"),
+                "RESTORE": _request_terms("RESTORE", "0.0400000000", "GB"),
                 "STORAGE": _request_terms("STORAGE", "0.0230000000", "GB-Mo"),
             }
         },
@@ -113,13 +120,15 @@ def make_s3_offer(usage_type_prefix: str = "", standard_tier2_price_per_request:
 # the S3 request prices of make_s3_offer(), in USD per 1000 requests as bup has them
 s3_tier1_request_price = 0.005
 s3_tier2_request_prices = {"STANDARD": 0.0004, "STANDARD_IA": 0.001, "GLACIER_IR": 0.01}
+# the S3 retrieval fees of make_s3_offer(), in USD per GB
+s3_retrieval_prices = {"STANDARD_IA": 0.01, "GLACIER_IR": 0.03}
 
 
 def make_prices(region: str, transfer_out_price_per_gb: float = 0.09, dynamodb_read_price_per_million_units: float = 0.125, fetched: float = 0.0) -> AWSPrices:
     """
-    The prices of a region, with the S3 request prices of make_s3_offer().
+    The prices of a region, with the S3 request prices and retrieval fees of make_s3_offer().
     """
-    return AWSPrices(region, transfer_out_price_per_gb, dynamodb_read_price_per_million_units, fetched, s3_tier1_request_price, dict(s3_tier2_request_prices))
+    return AWSPrices(region, transfer_out_price_per_gb, dynamodb_read_price_per_million_units, fetched, s3_tier1_request_price, dict(s3_tier2_request_prices), dict(s3_retrieval_prices))
 
 
 def approx_prices(region: str, transfer_out_price_per_gb: float, fetched: float) -> AWSPrices:
@@ -128,7 +137,7 @@ def approx_prices(region: str, transfer_out_price_per_gb: float, fetched: float)
     to the ones of make_prices(), since they were multiplied.
     """
     tier2_prices = {storage_class: pytest.approx(price) for storage_class, price in s3_tier2_request_prices.items()}
-    return AWSPrices(region, transfer_out_price_per_gb, pytest.approx(0.125), fetched, pytest.approx(s3_tier1_request_price), tier2_prices)
+    return AWSPrices(region, transfer_out_price_per_gb, pytest.approx(0.125), fetched, pytest.approx(s3_tier1_request_price), tier2_prices, dict(s3_retrieval_prices))
 
 
 def make_fetch_offer(transfer_price_per_gb: str = "0.0900000000", dynamodb_price_per_unit: str = "0.0000001250"):

@@ -5,7 +5,7 @@ Everything in this file is AI-authored (Claude Code).
 
 from pathlib import Path
 from threading import Event
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Union
 from unittest.mock import patch, MagicMock
 
 from awsimple import S3SyncObject, S3SyncOutcome, S3SyncResult, S3Usage, S3VerifyObject, S3VerifyOutcome, S3VerifyResult
@@ -64,8 +64,9 @@ class FakeS3:
         self.bucket_accesses: Dict[str, MagicMock] = {}
         self.verify_results: Dict[str, S3VerifyResult] = {}  # by bucket name
         self.bucket_access_kwargs: Dict[str, dict] = {}
-        self.sync_requests: Dict[str, List[Tuple[str, str]]] = {}  # by bucket name, each request as (S3 API operation, storage class)
-        self.verify_requests: Dict[str, List[Tuple[str, str]]] = {}  # likewise
+        # by bucket name, each request as (S3 API operation, storage class) or, for one S3 sent an object for, (S3 API operation, storage class, bytes sent)
+        self.sync_requests: Dict[str, List[tuple]] = {}
+        self.verify_requests: Dict[str, List[tuple]] = {}  # likewise
 
     def __call__(self, bucket_name: Optional[str] = None, **kwargs) -> MagicMock:
         s3_access = MagicMock()
@@ -84,9 +85,9 @@ class FakeS3:
             self.bucket_access_kwargs[bucket_name] = kwargs
         return s3_access
 
-    def record_requests(self, bucket_name: str, requests: Dict[str, List[Tuple[str, str]]]):
-        for operation, storage_class in requests.get(bucket_name, []):
-            self.bucket_accesses[bucket_name].usage.record(operation, storage_class)
+    def record_requests(self, bucket_name: str, requests: Dict[str, List[tuple]]):
+        for request in requests.get(bucket_name, []):
+            self.bucket_accesses[bucket_name].usage.record(*request)
 
     def run_sync(self, bucket_name: str, *args, **kwargs) -> S3SyncResult:
         """

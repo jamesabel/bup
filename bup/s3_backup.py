@@ -308,8 +308,9 @@ class S3Backup(BupBase):
     def usage_out(self, bucket: SyncedBucket, name: str, received_bytes: int = 0):
         """
         Report what was received from S3 for a bucket and the S3 requests that were made for it since this was last called for the
-        bucket (awsimple counts every request of the bucket's access), with approximately what AWS charges for both at the prices of
-        the bucket's region. Nothing is reported if nothing was received and no request was made.
+        bucket (awsimple counts every request of the bucket's access), with approximately what AWS charges at the prices of the
+        bucket's region: for the data transfer, for the requests, and the retrieval fee of the bytes S3 sent of the storage classes
+        that have one. Nothing is reported if nothing was received and no request was made.
 
         :param bucket: the bucket
         :param name: what the transfer is reported as, e.g. the name of the bucket
@@ -317,10 +318,11 @@ class S3Backup(BupBase):
         """
         usage = bucket.access.usage
         tier_counts = usage.get_tier_counts()
+        download_sizes = usage.get_download_sizes()  # by storage class: also what a download that failed part way was sent
         usage.reset()  # what is reported next (e.g. the verification) starts from here
         request_count = get_charged_request_count(tier_counts)
         if received_bytes > 0 or request_count > 0:
-            cost = get_s3_cost(received_bytes, tier_counts, get_aws_prices(bucket.region))
+            cost = get_s3_cost(received_bytes, tier_counts, download_sizes, get_aws_prices(bucket.region))
             self.transfer_out(TransferRecord(BackupTypes.S3, name, received_bytes, cost=cost, region=bucket.region, requests=request_count))
 
     def check_bucket_size(self, bucket: SyncedBucket) -> bool:
