@@ -49,10 +49,10 @@ def test_prices_are_shown_but_cannot_be_entered(qapp):
     transfer_widget = TransferWidget()
 
     assert transfer_widget.prices_label.text() == (
-        "ap-southeast-2 : $0.114 per GB data transfer out, per 1000 S3 requests $0.005 list and $0.0004 other (GLACIER_IR $0.01, STANDARD_IA $0.001), "
-        "$0.125 per million DynamoDB read units (from AWS on 2026-11-21)\n"
-        "us-east-1 : $0.09 per GB data transfer out, per 1000 S3 requests $0.005 list and $0.0004 other (GLACIER_IR $0.01, STANDARD_IA $0.001), "
-        "$0.125 per million DynamoDB read units (from AWS on 2026-11-20)"
+        "ap-southeast-2 : $0.114 per GB data transfer out, $0.125 per million DynamoDB read units (from AWS on 2026-11-21)\n"
+        "    per 1000 S3 requests $0.005 list and $0.0004 other (GLACIER_IR $0.01, STANDARD_IA $0.001), per GB S3 retrieval GLACIER_IR $0.03, STANDARD_IA $0.01\n"
+        "us-east-1 : $0.09 per GB data transfer out, $0.125 per million DynamoDB read units (from AWS on 2026-11-20)\n"
+        "    per 1000 S3 requests $0.005 list and $0.0004 other (GLACIER_IR $0.01, STANDARD_IA $0.001), per GB S3 retrieval GLACIER_IR $0.03, STANDARD_IA $0.01"
     )
     # bup gets the prices itself - there is nothing for the user to type a price into
     assert transfer_widget.findChildren(QAbstractSpinBox) == []

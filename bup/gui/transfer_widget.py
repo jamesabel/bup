@@ -24,10 +24,18 @@ no_prices_text = "No AWS prices yet. bup gets them from AWS the first time a bac
 
 cost_note = (
     "Costs are approximate. bup gets the prices of each AWS region from AWS and refreshes them periodically. Costs are before the AWS "
-    "free allowances (e.g. 100 GB of data transfer a month, shared by the whole AWS account). S3 costs are the data transfer and the "
-    "requests (a request is priced by the storage class of its object), but not the retrieval fee some storage classes have. DynamoDB "
-    "reads count as on-demand. GitHub does not charge for transfer, so its sizes are informational."
+    "free allowances (e.g. 100 GB of data transfer a month, shared by the whole AWS account). S3 costs are the data transfer, the "
+    "requests (a request is priced by the storage class of its object) and the retrieval fee some storage classes have per GB read. "
+    "DynamoDB reads count as on-demand. GitHub does not charge for transfer, so its sizes are informational."
 )
+
+
+def get_storage_class_prices_text(prices: Dict[str, float]) -> str:
+    """
+    :param prices: USD prices by S3 storage class
+    :return: the prices in order of storage class, e.g. "GLACIER_IR $0.01, STANDARD_IA $0.001"
+    """
+    return ", ".join(f"{storage_class} ${price:g}" for storage_class, price in sorted(prices.items()))
 
 
 def get_s3_request_prices_text(aws_prices: AWSPrices) -> str:
@@ -37,15 +45,24 @@ def get_s3_request_prices_text(aws_prices: AWSPrices) -> str:
     """
     standard_price = aws_prices.get_s3_tier2_request_price_per_thousand(s3_standard_storage_class)
     s = f"per 1000 S3 requests ${aws_prices.s3_tier1_request_price_per_thousand:g} list and ${standard_price:g} other"
-    other_prices = [f"{storage_class} ${price:g}" for storage_class, price in sorted(aws_prices.s3_tier2_request_prices_per_thousand.items()) if price != standard_price]
+    other_prices = {storage_class: price for storage_class, price in aws_prices.s3_tier2_request_prices_per_thousand.items() if price != standard_price}
     if other_prices:
-        s += f" ({', '.join(other_prices)})"
+        s += f" ({get_storage_class_prices_text(other_prices)})"
     return s
+
+
+def get_s3_retrieval_prices_text(aws_prices: AWSPrices) -> str:
+    """
+    The S3 retrieval fees of a region, by storage class.
+    """
+    if not aws_prices.s3_retrieval_prices_per_gb:
+        return "no S3 retrieval fees"
+    return f"per GB S3 retrieval {get_storage_class_prices_text(aws_prices.s3_retrieval_prices_per_gb)}"
 
 
 def get_prices_text() -> str:
     """
-    The AWS prices bup has fetched, one line per region.
+    The AWS prices bup has fetched, two lines per region: the second has the S3 request prices and retrieval fees.
     """
     try:
         all_aws_prices = get_cached_aws_prices()
@@ -55,8 +72,9 @@ def get_prices_text() -> str:
     if not all_aws_prices:
         return no_prices_text
     return "\n".join(
-        f"{aws_prices.region} : ${aws_prices.transfer_out_price_per_gb:g} per GB data transfer out, {get_s3_request_prices_text(aws_prices)}, "
-        f"${aws_prices.dynamodb_read_price_per_million_units:g} per million DynamoDB read units (from AWS on {datetime.fromtimestamp(aws_prices.fetched).date().isoformat()})"
+        f"{aws_prices.region} : ${aws_prices.transfer_out_price_per_gb:g} per GB data transfer out, ${aws_prices.dynamodb_read_price_per_million_units:g} per million DynamoDB read units "
+        f"(from AWS on {datetime.fromtimestamp(aws_prices.fetched).date().isoformat()})\n"
+        f"    {get_s3_request_prices_text(aws_prices)}, {get_s3_retrieval_prices_text(aws_prices)}"
         for aws_prices in all_aws_prices
     )
 

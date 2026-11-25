@@ -28,6 +28,7 @@ from bup.aws_prices import (
     parse_transfer_out_price,
     parse_dynamodb_read_price,
     parse_s3_request_prices,
+    parse_s3_retrieval_prices,
     price_max_age_seconds,
     fetch_retry_seconds,
 )
@@ -129,6 +130,46 @@ def test_price_cache_of_an_earlier_bup_is_made_again(tmp_path, online):
     assert aws_price_cache.get_all() == []
     aws_price_cache.put(make_prices("us-east-1", fetched=2000.0))
     assert AWSPriceCache(cache_path).get_all() == [make_prices("us-east-1", fetched=2000.0)]  # and the new cache is kept
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_price_cache_of_bup_0_19_0_is_made_again(tmp_path, online):
+    # bup 0.19.0 cached the S3 request prices and no S3 retrieval fees
+    cache_path = tmp_path / "aws_prices.db"
+    with closing(sqlite3.connect(cache_path)) as connection, connection:
+        connection.execute(
+            "CREATE TABLE aws_prices (region TEXT PRIMARY KEY, transfer_out_price_per_gb REAL NOT NULL, dynamodb_read_price_per_million_units REAL NOT NULL, fetched REAL NOT NULL, "
+            "s3_tier1_request_price_per_thousand REAL NOT NULL, s3_tier2_request_prices_per_thousand TEXT NOT NULL)"
+        )
+        connection.execute("INSERT INTO aws_prices VALUES ('us-east-1', 0.09, 0.125, 1000.0, 0.005, '{\"STANDARD\": 0.0004}')")
+
+    aws_price_cache = AWSPriceCache(cache_path)
+
+    assert aws_price_cache.get_all() == []  # prices without the retrieval fees are not prices to estimate a cost with
+    aws_price_cache.put(make_prices("us-east-1", fetched=2000.0))
+    assert AWSPriceCache(cache_path).get_all() == [make_prices("us-east-1", fetched=2000.0)]  # and the new cache is kept
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+@pytest.mark.parametrize("usage_type_prefix", ["", "EU-"])  # the usage types of us-east-1 have no prefix, and those of e.g. eu-west-1 start with "EU-"
+def test_parse_s3_retrieval_prices_are_per_gb_of_each_storage_class_that_has_one(usage_type_prefix):
+    # not the S3 Select fee of a storage class or the retrieval fee of a restore, which the file also has
+    assert parse_s3_retrieval_prices(make_s3_offer(usage_type_prefix)) == {"STANDARD_IA": 0.01, "GLACIER_IR": 0.03}
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_parse_s3_retrieval_prices_of_a_file_without_any():
+    # not an error: a storage class without a retrieval fee in the file has none
+    assert parse_s3_retrieval_prices({"products": {}, "terms": {"OnDemand": {}}}) == {}
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_s3_retrieval_price_of_a_storage_class_without_one_is_zero():
+    aws_prices = make_prices("us-east-1")
+
+    assert aws_prices.get_s3_retrieval_price_per_gb("GLACIER_IR") == 0.03
+    assert aws_prices.get_s3_retrieval_price_per_gb("STANDARD_IA") == 0.01
+    assert aws_prices.get_s3_retrieval_price_per_gb("STANDARD") == 0.0
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.

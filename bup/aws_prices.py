@@ -49,6 +49,13 @@ s3_tier2_request_groups = {
     "GLACIER": "S3-API-GLACIER-Tier2",
     "DEEP_ARCHIVE": "S3-API-GDA-Tier2",
 }
+# The "group" of the retrieval fee of each storage class that has one: a price per GB of the objects that are read, which is on top of
+# the data transfer out. (An archived object, e.g. of GLACIER, has to be restored before it can be read, which bup does not do.)
+s3_retrieval_groups = {
+    "STANDARD_IA": "S3-API-SIA-Retrieval",
+    "ONEZONE_IA": "S3-API-ZIA-Retrieval",
+    "GLACIER_IR": "S3-API-GIR-Retrieval",
+}
 
 
 class AWSPriceError(Exception):
@@ -71,6 +78,7 @@ class AWSPrices:
     # USD, S3 GET, HEAD and all other requests, by the storage class of the object. Always has STANDARD, which is also the price of a
     # storage class that is not here.
     s3_tier2_request_prices_per_thousand: Dict[str, float]
+    s3_retrieval_prices_per_gb: Dict[str, float]  # USD, the retrieval fee of the S3 storage classes that have one, by storage class
 
     def get_s3_tier2_request_price_per_thousand(self, storage_class: str) -> float:
         """
@@ -78,6 +86,13 @@ class AWSPrices:
         :return: USD per 1000 GET, HEAD or other tier 2 requests for objects of the storage class
         """
         return self.s3_tier2_request_prices_per_thousand.get(storage_class, self.s3_tier2_request_prices_per_thousand[s3_standard_storage_class])
+
+    def get_s3_retrieval_price_per_gb(self, storage_class: str) -> float:
+        """
+        :param storage_class: the storage class of an S3 object, as S3 names it (e.g. "GLACIER_IR")
+        :return: USD per GB read of objects of the storage class, which is zero for a storage class without a retrieval fee (e.g. STANDARD)
+        """
+        return self.s3_retrieval_prices_per_gb.get(storage_class, 0.0)
 
 
 def get_aws_price_cache_path() -> Path:
@@ -128,21 +143,46 @@ def parse_dynamodb_read_price(offer: dict) -> float:
     raise AWSPriceError("no DynamoDB on-demand read request unit price")
 
 
-def find_s3_request_price(offer: dict, group: str) -> Optional[float]:
+def find_s3_price(offer: dict, group: str, usage_type_end: str) -> Optional[float]:
     """
-    USD per 1000 S3 requests of a group, from a region's AmazonS3 price list file. A group can have other products too (e.g.
-    "S3-API-Tier2" also has the annotation requests), so the product is the one whose usage type is the requests of the group, e.g.
-    "EU-Requests-SIA-Tier2" for "S3-API-SIA-Tier2".
+    USD per unit of an S3 product, from a region's AmazonS3 price list file. A group can have more than one product (e.g. "S3-API-Tier2"
+    also has the annotation requests), so the product is also known by what its usage type ends with. The usage types of a region
+    other than us-east-1 start with the region's prefix, e.g. "EU-Requests-SIA-Tier2".
 
     :param group: the "group" attribute of the product, e.g. "S3-API-SIA-Tier2"
+    :param usage_type_end: what the "usagetype" attribute of the product ends with, e.g. "Requests-SIA-Tier2"
     :return: the price, or None if the file does not have it (e.g. a storage class the region does not have)
     """
-    usage_type_end = "Requests-" + group.removeprefix("S3-API-")
     for sku, product in offer["products"].items():
         attributes = product["attributes"]
         if attributes.get("group") == group and attributes.get("usagetype", "").endswith(usage_type_end):
-            return get_first_tier_price(offer, sku) * requests_per_thousand
+            return get_first_tier_price(offer, sku)
     return None
+
+
+def find_s3_request_price(offer: dict, group: str) -> Optional[float]:
+    """
+    USD per 1000 S3 requests of a group, from a region's AmazonS3 price list file.
+
+    :param group: the "group" attribute of the product, e.g. "S3-API-SIA-Tier2" (whose usage type ends with "Requests-SIA-Tier2")
+    :return: the price, or None if the file does not have it (e.g. a storage class the region does not have)
+    """
+    price_per_request = find_s3_price(offer, group, "Requests-" + group.removeprefix("S3-API-"))
+    return None if price_per_request is None else price_per_request * requests_per_thousand
+
+
+def parse_s3_retrieval_prices(offer: dict) -> Dict[str, float]:
+    """
+    The retrieval fees of a region's AmazonS3 price list file, in USD per GB read.
+
+    :return: the retrieval fee of each storage class the file has one for (none is not an error: not every region has every storage class)
+    """
+    retrieval_prices = {}
+    for storage_class, group in s3_retrieval_groups.items():
+        # e.g. the usage type of "S3-API-SIA-Retrieval" ends with "Retrieval-SIA"
+        if (retrieval_price := find_s3_price(offer, group, "Retrieval-" + group.removeprefix("S3-API-").removesuffix("-Retrieval"))) is not None:
+            retrieval_prices[storage_class] = retrieval_price
+    return retrieval_prices
 
 
 def parse_s3_request_prices(offer: dict) -> Tuple[float, Dict[str, float]]:
@@ -169,11 +209,14 @@ def fetch_aws_prices(region: str) -> AWSPrices:
     """
     transfer_out_price_per_gb = parse_transfer_out_price(fetch_offer(data_transfer_service_code, region), region)
     dynamodb_read_price_per_million_units = parse_dynamodb_read_price(fetch_offer(dynamodb_service_code, region))
-    s3_tier1_request_price, s3_tier2_request_prices = parse_s3_request_prices(fetch_offer(s3_service_code, region))
-    return AWSPrices(region, transfer_out_price_per_gb, dynamodb_read_price_per_million_units, time.time(), s3_tier1_request_price, s3_tier2_request_prices)
+    s3_offer = fetch_offer(s3_service_code, region)
+    s3_tier1_request_price, s3_tier2_request_prices = parse_s3_request_prices(s3_offer)
+    s3_retrieval_prices = parse_s3_retrieval_prices(s3_offer)
+    return AWSPrices(region, transfer_out_price_per_gb, dynamodb_read_price_per_million_units, time.time(), s3_tier1_request_price, s3_tier2_request_prices, s3_retrieval_prices)
 
 
-# The columns of the price cache table, which are the fields of AWSPrices in order. The tier 2 request prices are a JSON object.
+# The columns of the price cache table, which are the fields of AWSPrices in order. The prices by storage class (the last two) are
+# each a JSON object.
 price_cache_column_names = [
     "region",
     "transfer_out_price_per_gb",
@@ -181,6 +224,7 @@ price_cache_column_names = [
     "fetched",
     "s3_tier1_request_price_per_thousand",
     "s3_tier2_request_prices_per_thousand",
+    "s3_retrieval_prices_per_gb",
 ]
 price_cache_columns = ", ".join(price_cache_column_names)
 
@@ -190,8 +234,8 @@ def make_aws_prices(row: tuple) -> AWSPrices:
     :param row: a row of the price cache table (its price_cache_columns)
     :return: the prices of the row
     """
-    *values, s3_tier2_request_prices_json = row
-    return AWSPrices(*values, json.loads(s3_tier2_request_prices_json))
+    *values, s3_tier2_request_prices_json, s3_retrieval_prices_json = row
+    return AWSPrices(*values, json.loads(s3_tier2_request_prices_json), json.loads(s3_retrieval_prices_json))
 
 
 class AWSPriceCache:
@@ -206,15 +250,15 @@ class AWSPriceCache:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with closing(self._connect()) as connection, connection:
-            # A table without all the prices is of an earlier bup (0.18.0 and before had no S3 request prices). This is a cache, so
-            # it is made again and its prices are fetched again.
+            # A table without all the prices is of an earlier bup (0.18.0 and before had no S3 request prices, and 0.19.0 no S3
+            # retrieval fees). This is a cache, so it is made again and its prices are fetched again.
             existing_column_names = [column[1] for column in connection.execute("PRAGMA table_info(aws_prices)")]
             if existing_column_names and existing_column_names != price_cache_column_names:
                 connection.execute("DROP TABLE aws_prices")
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS aws_prices "
                 "(region TEXT PRIMARY KEY, transfer_out_price_per_gb REAL NOT NULL, dynamodb_read_price_per_million_units REAL NOT NULL, fetched REAL NOT NULL, "
-                "s3_tier1_request_price_per_thousand REAL NOT NULL, s3_tier2_request_prices_per_thousand TEXT NOT NULL)"
+                "s3_tier1_request_price_per_thousand REAL NOT NULL, s3_tier2_request_prices_per_thousand TEXT NOT NULL, s3_retrieval_prices_per_gb TEXT NOT NULL)"
             )
 
     def _connect(self) -> sqlite3.Connection:
@@ -242,7 +286,7 @@ class AWSPriceCache:
         """
         with closing(self._connect()) as connection, connection:
             connection.execute(
-                f"INSERT OR REPLACE INTO aws_prices ({price_cache_columns}) VALUES (?, ?, ?, ?, ?, ?)",
+                f"INSERT OR REPLACE INTO aws_prices ({price_cache_columns}) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     aws_prices.region,
                     aws_prices.transfer_out_price_per_gb,
@@ -250,6 +294,7 @@ class AWSPriceCache:
                     aws_prices.fetched,
                     aws_prices.s3_tier1_request_price_per_thousand,
                     json.dumps(aws_prices.s3_tier2_request_prices_per_thousand),
+                    json.dumps(aws_prices.s3_retrieval_prices_per_gb),
                 ),
             )
 

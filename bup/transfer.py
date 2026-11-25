@@ -3,8 +3,8 @@ Network transfer accounting for backups: how much each backup received from AWS 
 
 The costs are estimates. They use the AWS list prices of the region the data came from (see bup/aws_prices.py), and they do not know
 how much of the AWS free allowances (e.g. 100 GB of data transfer a month, shared by the whole AWS account) is left. For S3 they are
-the data transfer and the requests (which awsimple counts, see S3Access.usage), and not the retrieval fee that some storage classes
-have per GB read.
+the data transfer, the requests and the retrieval fee that some storage classes have per GB read (awsimple counts the requests and
+the bytes S3 sent by storage class, see S3Access.usage).
 """
 
 from dataclasses import dataclass
@@ -62,14 +62,28 @@ def get_s3_request_cost(tier_counts: S3TierCounts, aws_prices: AWSPrices) -> flo
     return cost
 
 
-def get_s3_cost(byte_count: int, tier_counts: S3TierCounts, aws_prices: Optional[AWSPrices]) -> Optional[float]:
+def get_s3_retrieval_cost(download_sizes: Dict[str, int], aws_prices: AWSPrices) -> float:
     """
-    Approximate USD cost of what a backup asked of S3: the data transfer out of what it received plus its requests.
-    None if the region's prices are not known.
+    Approximate USD cost of the retrieval fees of the S3 objects that were read, at a region's prices. Only some storage classes have
+    one (e.g. STANDARD_IA and GLACIER_IR), per GB read.
+
+    :param download_sizes: the bytes S3 sent, by storage class, as awsimple's S3Usage.get_download_sizes() gives them
+    """
+    return sum(byte_count / bytes_per_gb * aws_prices.get_s3_retrieval_price_per_gb(storage_class) for storage_class, byte_count in download_sizes.items())
+
+
+def get_s3_cost(byte_count: int, tier_counts: S3TierCounts, download_sizes: Dict[str, int], aws_prices: Optional[AWSPrices]) -> Optional[float]:
+    """
+    Approximate USD cost of what a backup asked of S3: the data transfer out of what it received, its requests, and the retrieval fees
+    of the objects it read. None if the region's prices are not known.
+
+    :param byte_count: the size of what was received
+    :param tier_counts: the requests that were made
+    :param download_sizes: the bytes S3 sent, by storage class
     """
     if aws_prices is None:
         return None
-    return _transfer_out_cost(byte_count, aws_prices) + get_s3_request_cost(tier_counts, aws_prices)
+    return _transfer_out_cost(byte_count, aws_prices) + get_s3_request_cost(tier_counts, aws_prices) + get_s3_retrieval_cost(download_sizes, aws_prices)
 
 
 def get_dynamodb_scan_cost(byte_count: int, read_units: float, aws_prices: Optional[AWSPrices]) -> Optional[float]:

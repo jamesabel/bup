@@ -18,6 +18,7 @@ from bup.transfer import (
     get_dynamodb_scan_cost,
     get_s3_cost,
     get_s3_request_cost,
+    get_s3_retrieval_cost,
     get_transfer_total,
     format_size,
     format_cost,
@@ -56,7 +57,7 @@ def test_costs_are_unknown_without_prices():
     # unknown, as opposed to free
     assert get_transfer_out_cost(10 * bytes_per_gb, None) is None
     assert get_dynamodb_scan_cost(10 * bytes_per_gb, 2000000.0, None) is None
-    assert get_s3_cost(10 * bytes_per_gb, {(S3RequestTier.tier2, "STANDARD"): 1000}, None) is None
+    assert get_s3_cost(10 * bytes_per_gb, {(S3RequestTier.tier2, "STANDARD"): 1000}, {"STANDARD": 10 * bytes_per_gb}, None) is None
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
@@ -84,11 +85,23 @@ def test_s3_requests_that_are_free_are_not_charged_or_counted():
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
-def test_s3_cost_is_the_data_transfer_plus_the_requests():
+def test_s3_cost_is_the_data_transfer_plus_the_requests_plus_the_retrieval_fees():
     aws_prices = make_prices("us-east-1")
 
-    assert get_s3_cost(10 * bytes_per_gb, {(S3RequestTier.tier2, "GLACIER_IR"): 10000}, aws_prices) == pytest.approx(0.90 + 0.1)
-    assert get_s3_cost(0, {}, aws_prices) == 0.0
+    assert get_s3_cost(10 * bytes_per_gb, {(S3RequestTier.tier2, "STANDARD"): 10000}, {"STANDARD": 10 * bytes_per_gb}, aws_prices) == pytest.approx(0.90 + 0.004)
+    # the same from Glacier Instant Retrieval: its requests are 25 times the price, and a third of the data transfer is added as its retrieval fee
+    assert get_s3_cost(10 * bytes_per_gb, {(S3RequestTier.tier2, "GLACIER_IR"): 10000}, {"GLACIER_IR": 10 * bytes_per_gb}, aws_prices) == pytest.approx(0.90 + 0.1 + 0.30)
+    assert get_s3_cost(0, {}, {}, aws_prices) == 0.0
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_s3_retrieval_fee_is_per_gb_read_of_the_storage_classes_that_have_one():
+    aws_prices = make_prices("us-east-1")  # per GB: $0.01 STANDARD_IA, $0.03 GLACIER_IR
+
+    assert get_s3_retrieval_cost({}, aws_prices) == 0.0
+    assert get_s3_retrieval_cost({"STANDARD": 100 * bytes_per_gb, "INTELLIGENT_TIERING": 100 * bytes_per_gb}, aws_prices) == 0.0  # no retrieval fee
+    assert get_s3_retrieval_cost({"GLACIER_IR": 10 * bytes_per_gb}, aws_prices) == pytest.approx(0.30)
+    assert get_s3_retrieval_cost({"STANDARD": bytes_per_gb, "STANDARD_IA": 2 * bytes_per_gb, "GLACIER_IR": bytes_per_gb // 2}, aws_prices) == pytest.approx(0.02 + 0.015)
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
