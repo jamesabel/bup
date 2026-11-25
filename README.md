@@ -35,7 +35,8 @@ It has a GUI for everyday use and a command line for scripts and scheduled jobs.
 - **DynamoDB:** each table is saved in full, as both a pickle file and a JSON file.
 - **GitHub:** each repository is cloned, and every branch is kept an exact mirror of the remote.
 - **Exclusions:** skip particular buckets, tables or repos, with comments to say why.
-- **Transfer and cost:** see how much each backup downloaded and approximately what AWS charges for it.
+- **Transfer and cost:** see how much each backup downloaded and approximately what AWS charges for it: the data
+  transfer, the S3 requests and the S3 retrieval fees, at the current AWS prices of each region.
 - **History:** every backup run is on record, with when it ran, how it ended, how many buckets, tables or repos and
   files it backed up, what it downloaded and its errors. If a
   backup was cut short (e.g. by a system crash), bup says so the next time it is started.
@@ -49,7 +50,8 @@ The Backup tab runs the backups and shows each backup type's exclusions, progres
 
 ![Backup tab](https://raw.githubusercontent.com/jamesabel/bup/main/doc/screenshots/backup.png)
 
-The Transfer tab shows what each bucket, table and repo downloaded, and the approximate AWS cost:
+The Transfer tab shows what each bucket, table and repo downloaded, the S3 requests that were made, the approximate
+AWS cost and the AWS prices it is worked out with:
 
 ![Transfer tab](https://raw.githubusercontent.com/jamesabel/bup/main/doc/screenshots/transfer.png)
 
@@ -128,7 +130,7 @@ Each bucket is synced to `s3/<bucket>/` with [awsimple](https://github.com/james
   S3 object.
 - Local files are never deleted, so objects deleted from S3 are kept in the local backup.
 - Each bucket is accessed in the region it is in, whichever region is set in Preferences.
-- A dry run downloads nothing and reports how many files would be synced.
+- A dry run downloads nothing and reports how many files would be synced (and the S3 requests it made to find out).
 - Stop lets the downloads that have started finish, and starts no others.
 
 ## What is reported
@@ -233,8 +235,8 @@ An S3 key is any string, and a local file name is not. bup never changes the nam
 
 # Transfer and approximate AWS cost
 
-AWS charges for data sent out to the internet, which is what a backup is, and for the requests that are made to S3.
-bup reports what each backup received and approximately what AWS charges for it. In the GUI this is in the
+AWS charges for data sent out to the internet, which is what a backup is, for the requests that are made to S3,
+and for some S3 storage classes a retrieval fee for what is read. bup reports what each backup received and approximately what AWS charges for it. In the GUI this is in the
 "Transfer" tab (and the application log), with one row per S3 bucket, DynamoDB table or GitHub repo that received
 anything or made S3 requests (sorted by cost, highest at the top), a total per backup type and a grand total. The
 CLI prints the same lines in its regular output.
@@ -247,12 +249,15 @@ CLI prints the same lines in its regular output.
   (about $0.01 per GB for STANDARD_IA and ONEZONE_IA, and $0.03 for GLACIER_IR), which is in the cost for the bytes
   S3 sent of each storage class (awsimple counts these too). A bucket is reported even when nothing was downloaded,
   since finding that out makes requests. With the verification, each bucket has a second row for the requests of
-  its verification, e.g.:
+  its verification, e.g. for a bucket of Glacier Instant Retrieval objects:
 
   ```
-  my-bucket : received 1.2 GB, 1310 S3 requests, approximately $0.1093 before any AWS free allowance
+  my-bucket : received 1.2 GB, 1310 S3 requests, approximately $0.1569 before any AWS free allowance
   my-bucket (verification) : received 0 B, 48200 S3 requests, approximately $0.4820 before any AWS free allowance
   ```
+
+  The first line is $0.108 of data transfer, $0.036 of retrieval fee and $0.013 of requests. The verification
+  reads no objects, so it is requests alone.
 - **DynamoDB:** the size of the table scan responses, priced as data transfer out, plus the read units the scan
   consumed, priced as on-demand reads. Tables are only scanned when they have changed or about once a day, so many
   runs receive nothing.
@@ -268,7 +273,8 @@ The costs are estimates:
   bup's user cache directory), and are fetched again when they are more than a week old. The Transfer tab shows the
   prices in use and when they were fetched.
 - If the prices can not be fetched (e.g. the price list is unreachable) the previously fetched prices are used. If
-  there are none yet, the transfer is reported without a cost.
+  there are none yet, the transfer is reported without a cost. The prices cached by an earlier bup (0.19.0 and
+  before) do not have all the prices, so they are fetched again the first time a newer bup needs them.
 - Volume discounts are not applied (the price used is that of the first 10 TB a month).
 - AWS does not charge for the first 100 GB of data transfer out a month, shared by the whole AWS account. bup does
   not know how much of that allowance is left, so the cost shown is before the allowance - the most the transfer could
@@ -277,7 +283,10 @@ The costs are estimates:
   again, while "received" is the size of the objects that were downloaded.
 - The S3 requests that are not for one bucket are not included: the listing of the buckets, and a request for
   the region of each bucket.
-- A storage class that the price list has no request price for is priced as STANDARD.
+- A storage class that the price list has no request price for is priced as STANDARD, and one it has no retrieval
+  fee for has none.
+- An archived object (GLACIER, DEEP_ARCHIVE) is not downloaded, since it would have to be restored first, so the
+  fees of a restore do not come into it.
 - DynamoDB reads are priced as on-demand. A table with provisioned capacity has already paid for its reads.
 - A dry run downloads nothing, and reports the S3 requests it made to find out what a sync would download.
 
