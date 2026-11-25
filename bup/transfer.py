@@ -1,18 +1,22 @@
 """
 Network transfer accounting for backups: how much each backup received from AWS (and GitHub), and approximately what AWS charges for it.
 
-The costs are estimates. They use the AWS list prices of the region the data came from (see bup/aws_prices.py), they do not know how
-much of the AWS free data transfer allowance (100 GB a month, shared by the whole AWS account) is left, and they do not include request
-charges (e.g. S3 GET and LIST).
+The costs are estimates. They use the AWS list prices of the region the data came from (see bup/aws_prices.py), and they do not know
+how much of the AWS free allowances (e.g. 100 GB of data transfer a month, shared by the whole AWS account) is left. For S3 they are
+the data transfer and the requests (which awsimple counts, see S3Access.usage), and not the retrieval fee that some storage classes
+have per GB read.
 """
 
 from dataclasses import dataclass
-from typing import Iterable, Optional
+from typing import Dict, Iterable, Optional, Tuple
 
+from awsimple import S3RequestTier
 from PyQt5.QtCore import QObject, pyqtSignal
 
 from bup.backup_types import BackupTypes
-from bup.aws_prices import AWSPrices, read_units_per_million
+from bup.aws_prices import AWSPrices, read_units_per_million, requests_per_thousand
+
+S3TierCounts = Dict[Tuple[S3RequestTier, str], int]  # S3 requests by request tier and storage class, as awsimple's S3Usage.get_tier_counts() gives them
 
 bytes_per_gb = 1024**3  # AWS bills data transfer per GB of 2^30 bytes
 
@@ -35,6 +39,37 @@ def _transfer_out_cost(byte_count: int, aws_prices: AWSPrices) -> float:
     Approximate USD cost of data transfer out to the internet, at a region's prices.
     """
     return byte_count / bytes_per_gb * aws_prices.transfer_out_price_per_gb
+
+
+def get_charged_request_count(tier_counts: S3TierCounts) -> int:
+    """
+    :return: how many of the S3 requests AWS charges for (all but the free tier, e.g. a DELETE)
+    """
+    return sum(count for (tier, _unused_storage_class), count in tier_counts.items() if tier is not S3RequestTier.free)
+
+
+def get_s3_request_cost(tier_counts: S3TierCounts, aws_prices: AWSPrices) -> float:
+    """
+    Approximate USD cost of S3 requests, at a region's prices. A tier 2 request (GET, HEAD and all others) is priced by the storage
+    class of its object. A tier 1 request has one price: bup writes nothing to S3, so its tier 1 requests are listings.
+    """
+    cost = 0.0
+    for (tier, storage_class), count in tier_counts.items():
+        if tier is S3RequestTier.tier1:
+            cost += count / requests_per_thousand * aws_prices.s3_tier1_request_price_per_thousand
+        elif tier is S3RequestTier.tier2:
+            cost += count / requests_per_thousand * aws_prices.get_s3_tier2_request_price_per_thousand(storage_class)
+    return cost
+
+
+def get_s3_cost(byte_count: int, tier_counts: S3TierCounts, aws_prices: Optional[AWSPrices]) -> Optional[float]:
+    """
+    Approximate USD cost of what a backup asked of S3: the data transfer out of what it received plus its requests.
+    None if the region's prices are not known.
+    """
+    if aws_prices is None:
+        return None
+    return _transfer_out_cost(byte_count, aws_prices) + get_s3_request_cost(tier_counts, aws_prices)
 
 
 def get_dynamodb_scan_cost(byte_count: int, read_units: float, aws_prices: Optional[AWSPrices]) -> Optional[float]:
@@ -82,9 +117,12 @@ class TransferRecord:
     read_units: float = 0.0  # DynamoDB read request units consumed (DynamoDB only)
     cost: Optional[float] = None  # approximate USD, None where there is no charge to estimate (GitHub) or the AWS prices are not known
     region: Optional[str] = None  # the AWS region the data came from (and whose prices the cost uses), None for GitHub or if not known
+    requests: int = 0  # the S3 requests made that AWS charges for (S3 only)
 
     def __str__(self):
         s = f"{self.name} : received {format_size(self.received_bytes)}"
+        if self.requests > 0:
+            s += f", {self.requests} S3 requests"
         if self.read_units > 0.0:
             s += f", {self.read_units:g} read units"
         if self.cost is not None:
@@ -105,6 +143,7 @@ def get_transfer_total(backup_type: Optional[BackupTypes], transfer_records: Ite
         sum(transfer_record.received_bytes for transfer_record in transfer_records),
         sum(transfer_record.read_units for transfer_record in transfer_records),
         sum(costs) if costs else None,
+        requests=sum(transfer_record.requests for transfer_record in transfer_records),
     )
 
 

@@ -27,11 +27,12 @@ from bup.aws_prices import (
     get_first_tier_price,
     parse_transfer_out_price,
     parse_dynamodb_read_price,
+    parse_s3_request_prices,
     price_max_age_seconds,
     fetch_retry_seconds,
 )
 
-from .aws_price_offers import make_transfer_offer, make_dynamodb_offer, make_fetch_offer
+from .aws_price_offers import approx_prices, make_transfer_offer, make_dynamodb_offer, make_fetch_offer, make_prices, make_s3_offer
 
 
 def _fetch_offer_offline(service_code: str, region: str, timeout: float = 60.0) -> dict:
@@ -83,6 +84,54 @@ def test_parse_dynamodb_read_price_not_in_the_file():
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+@pytest.mark.parametrize("usage_type_prefix", ["", "EU-"])  # the usage types of us-east-1 have no prefix, and those of e.g. eu-west-1 start with "EU-"
+def test_parse_s3_request_prices_are_per_thousand_requests_of_each_storage_class(usage_type_prefix):
+    # not the annotation requests, the S3 Tables requests or a retrieval fee, which the file also has
+    tier1_price, tier2_prices = parse_s3_request_prices(make_s3_offer(usage_type_prefix))
+
+    assert tier1_price == pytest.approx(0.005)
+    assert tier2_prices == {"STANDARD": pytest.approx(0.0004), "STANDARD_IA": pytest.approx(0.001), "GLACIER_IR": pytest.approx(0.01)}
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_parse_s3_request_prices_not_in_the_file():
+    with pytest.raises(AWSPriceError, match="tier 1"):
+        parse_s3_request_prices({"products": {}, "terms": {"OnDemand": {}}})
+
+    offer = make_s3_offer()
+    del offer["products"]["TIER2"]  # the annotation requests are still in the group of the STANDARD requests
+    with pytest.raises(AWSPriceError, match="tier 2"):
+        parse_s3_request_prices(offer)
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_s3_tier2_request_price_of_a_storage_class_without_one_is_the_standard_price():
+    aws_prices = make_prices("us-east-1")
+
+    assert aws_prices.get_s3_tier2_request_price_per_thousand("GLACIER_IR") == 0.01
+    assert aws_prices.get_s3_tier2_request_price_per_thousand("STANDARD") == 0.0004
+    assert aws_prices.get_s3_tier2_request_price_per_thousand("DEEP_ARCHIVE") == 0.0004  # the file of make_s3_offer() has no price for it
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_price_cache_of_an_earlier_bup_is_made_again(tmp_path, online):
+    # bup 0.18.0 and before cached no S3 request prices
+    cache_path = tmp_path / "aws_prices.db"
+    with closing(sqlite3.connect(cache_path)) as connection, connection:
+        connection.execute(
+            "CREATE TABLE aws_prices (region TEXT PRIMARY KEY, transfer_out_price_per_gb REAL NOT NULL, dynamodb_read_price_per_million_units REAL NOT NULL, fetched REAL NOT NULL)"
+        )
+        connection.execute("INSERT INTO aws_prices VALUES ('us-east-1', 0.09, 0.125, 1000.0)")
+
+    aws_price_cache = AWSPriceCache(cache_path)
+
+    assert aws_price_cache.get("us-east-1") is None  # prices without the request prices are not prices to estimate a cost with
+    assert aws_price_cache.get_all() == []
+    aws_price_cache.put(make_prices("us-east-1", fetched=2000.0))
+    assert AWSPriceCache(cache_path).get_all() == [make_prices("us-east-1", fetched=2000.0)]  # and the new cache is kept
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
 def test_get_first_tier_price_without_a_tier_from_zero():
     offer = {"terms": {"OnDemand": {"SKU": {"SKU.T": {"priceDimensions": {"SKU.T.1": {"beginRange": "100", "endRange": "Inf", "pricePerUnit": {"USD": "0.05"}}}}}}}}
     with pytest.raises(AWSPriceError):
@@ -100,21 +149,21 @@ def test_fetch_offer_downloads_the_file_of_the_service_and_region():
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
 def test_fetch_aws_prices(online, clock):
-    assert fetch_aws_prices("eu-west-1") == AWSPrices("eu-west-1", 0.09, pytest.approx(0.125), clock.now)
-    assert online.fetched == [("AWSDataTransfer", "eu-west-1"), ("AmazonDynamoDB", "eu-west-1")]
+    assert fetch_aws_prices("eu-west-1") == approx_prices("eu-west-1", 0.09, clock.now)
+    assert online.fetched == [("AWSDataTransfer", "eu-west-1"), ("AmazonDynamoDB", "eu-west-1"), ("AmazonS3", "eu-west-1")]
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
 def test_price_cache_is_a_sqlite_database_that_persists(tmp_path):
     cache_path = tmp_path / "new_directory" / "aws_prices.db"
-    AWSPriceCache(cache_path).put(AWSPrices("us-east-1", 0.09, 0.125, 1000.0))
-    AWSPriceCache(cache_path).put(AWSPrices("eu-west-1", 0.09, 0.1423, 2000.0))
-    AWSPriceCache(cache_path).put(AWSPrices("us-east-1", 0.08, 0.125, 3000.0))  # newer prices replace the region's old ones
+    AWSPriceCache(cache_path).put(make_prices("us-east-1", 0.09, 0.125, 1000.0))
+    AWSPriceCache(cache_path).put(make_prices("eu-west-1", 0.09, 0.1423, 2000.0))
+    AWSPriceCache(cache_path).put(make_prices("us-east-1", 0.08, 0.125, 3000.0))  # newer prices replace the region's old ones
 
     aws_price_cache = AWSPriceCache(cache_path)  # a new object, as after a restart
-    assert aws_price_cache.get("us-east-1") == AWSPrices("us-east-1", 0.08, 0.125, 3000.0)
+    assert aws_price_cache.get("us-east-1") == make_prices("us-east-1", 0.08, 0.125, 3000.0)
     assert aws_price_cache.get("ap-southeast-2") is None
-    assert aws_price_cache.get_all() == [AWSPrices("eu-west-1", 0.09, 0.1423, 2000.0), AWSPrices("us-east-1", 0.08, 0.125, 3000.0)]
+    assert aws_price_cache.get_all() == [make_prices("eu-west-1", 0.09, 0.1423, 2000.0), make_prices("us-east-1", 0.08, 0.125, 3000.0)]
     with closing(sqlite3.connect(cache_path)) as connection:
         assert connection.execute("SELECT COUNT(*) FROM aws_prices").fetchone() == (2,)
 
@@ -125,8 +174,8 @@ def test_get_aws_prices_fetches_once_then_uses_the_cache(online, clock):
     clock.now += price_max_age_seconds - 1.0
     second = get_aws_prices("us-east-1")
 
-    assert first == second == AWSPrices("us-east-1", 0.09, pytest.approx(0.125), 1000000.0)
-    assert len(online.fetched) == 2  # the two files of the region, fetched once
+    assert first == second == approx_prices("us-east-1", 0.09, 1000000.0)
+    assert len(online.fetched) == 3  # the three files of the region, fetched once
     assert get_cached_aws_prices() == [first]
 
 
@@ -138,7 +187,7 @@ def test_get_aws_prices_fetches_again_when_the_cached_prices_are_old(monkeypatch
 
     refreshed = get_aws_prices("us-east-1")
 
-    assert refreshed == AWSPrices("us-east-1", 0.08, pytest.approx(0.125), clock.now)
+    assert refreshed == approx_prices("us-east-1", 0.08, clock.now)
     assert get_cached_aws_prices() == [refreshed]
 
 

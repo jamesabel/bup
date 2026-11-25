@@ -5,10 +5,10 @@ Everything in this file is AI-authored (Claude Code).
 
 from pathlib import Path
 from threading import Event
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 from unittest.mock import patch, MagicMock
 
-from awsimple import S3SyncObject, S3SyncOutcome, S3SyncResult, S3VerifyObject, S3VerifyOutcome, S3VerifyResult
+from awsimple import S3SyncObject, S3SyncOutcome, S3SyncResult, S3Usage, S3VerifyObject, S3VerifyOutcome, S3VerifyResult
 
 from bup import UITypes
 from bup.s3_backup import S3Backup
@@ -53,6 +53,9 @@ class FakeS3:
     given result (or raises it, if it is an exception, or calls it for the result, if it is a function). The instance made for each
     bucket is in .bucket_accesses, with the keyword arguments it was made with in .bucket_access_kwargs. A verification of a bucket
     gives the result in .verify_results for it, or without one finds every file verified that the sync downloaded or found up to date.
+
+    Every instance has a usage (awsimple's S3Usage) as an S3Access has, which nothing is counted in since no request is made: a test
+    gives the S3 requests that the sync and the verification of a bucket count in .sync_requests and .verify_requests.
     """
 
     def __init__(self, sync_results: Dict[str, Union[S3SyncResult, Exception, Callable[..., S3SyncResult]]], bucket_region: str = "us-east-1"):
@@ -61,17 +64,18 @@ class FakeS3:
         self.bucket_accesses: Dict[str, MagicMock] = {}
         self.verify_results: Dict[str, S3VerifyResult] = {}  # by bucket name
         self.bucket_access_kwargs: Dict[str, dict] = {}
+        self.sync_requests: Dict[str, List[Tuple[str, str]]] = {}  # by bucket name, each request as (S3 API operation, storage class)
+        self.verify_requests: Dict[str, List[Tuple[str, str]]] = {}  # likewise
 
     def __call__(self, bucket_name: Optional[str] = None, **kwargs) -> MagicMock:
         s3_access = MagicMock()
+        s3_access.usage = S3Usage()
         s3_access.bucket_list.return_value = list(self.sync_results)
         s3_access.client.head_bucket.return_value = head_bucket_response(self.bucket_region)
         if bucket_name is not None:
             sync_result = self.sync_results[bucket_name]
-            if isinstance(sync_result, Exception) or callable(sync_result):
-                s3_access.sync_to_directory.side_effect = sync_result  # raised, or called as the sync and its return value is the result
-            else:
-                s3_access.sync_to_directory.return_value = sync_result
+            s3_access.sync_to_directory.side_effect = lambda *args, **kwargs: self.run_sync(bucket_name, *args, **kwargs)
+            if isinstance(sync_result, S3SyncResult):
                 # the listing of the bucket that verifies the sync: the objects of the sync result
                 contents = [{"Key": sync_object.key, "Size": sync_object.size} for sync_object in sync_result.objects.values()]
                 s3_access.client.get_paginator.return_value.paginate.return_value = [{"Contents": contents}]
@@ -80,11 +84,26 @@ class FakeS3:
             self.bucket_access_kwargs[bucket_name] = kwargs
         return s3_access
 
+    def record_requests(self, bucket_name: str, requests: Dict[str, List[Tuple[str, str]]]):
+        for operation, storage_class in requests.get(bucket_name, []):
+            self.bucket_accesses[bucket_name].usage.record(operation, storage_class)
+
+    def run_sync(self, bucket_name: str, *args, **kwargs) -> S3SyncResult:
+        """
+        The sync of a bucket: its given result, which is raised if it is an exception, and called as the sync if it is a function.
+        """
+        self.record_requests(bucket_name, self.sync_requests)
+        sync_result = self.sync_results[bucket_name]
+        if isinstance(sync_result, Exception):
+            raise sync_result
+        return sync_result(*args, **kwargs) if callable(sync_result) else sync_result
+
     def run_verification(self, bucket_name: str, sync_result: S3SyncResult, stop_event: Optional[Event] = None, callback: Optional[Callable[[S3VerifyObject], None]] = None) -> S3VerifyResult:
         """
         What awsimple's verify_directory() does with the objects of the result, one after the other: once a stop is requested the
         objects that are left are not attempted, and the callback is called with every object.
         """
+        self.record_requests(bucket_name, self.verify_requests)
         verify_result = self.verify_directory(bucket_name, sync_result)
         for verify_object in verify_result.objects.values():
             if stop_event is not None and stop_event.is_set() and verify_object.outcome != S3VerifyOutcome.skipped:

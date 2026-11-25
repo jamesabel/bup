@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QGroupBox, QLabel, QPushButton
 from balsa import get_logger
 
 from bup import BackupTypes, __application_name__
-from bup.aws_prices import get_cached_aws_prices
+from bup.aws_prices import AWSPrices, get_cached_aws_prices, s3_standard_storage_class
 from bup.gui.gui_util import get_local_time_string, make_row
 from bup.transfer import TransferRecord, transfer_emitter, get_transfer_total, format_size, format_cost
 
@@ -18,15 +18,29 @@ log = get_logger(__application_name__)
 
 max_transfer_rows = 1000  # rows kept in the table (the lowest cost rows are dropped)
 
-columns = ["Time", "Backup", "Name", "Region", "Received", "Read units", "Approximate cost"]
+columns = ["Time", "Backup", "Name", "Region", "Received", "S3 requests", "Read units", "Approximate cost"]
 
 no_prices_text = "No AWS prices yet. bup gets them from AWS the first time a backup receives data from S3 or DynamoDB."
 
 cost_note = (
     "Costs are approximate. bup gets the prices of each AWS region from AWS and refreshes them periodically. Costs are before the AWS "
-    "free data transfer allowance (100 GB a month, shared by the whole AWS account), do not include request charges, and count DynamoDB "
-    "reads as on-demand. GitHub does not charge for transfer, so its sizes are informational."
+    "free allowances (e.g. 100 GB of data transfer a month, shared by the whole AWS account). S3 costs are the data transfer and the "
+    "requests (a request is priced by the storage class of its object), but not the retrieval fee some storage classes have. DynamoDB "
+    "reads count as on-demand. GitHub does not charge for transfer, so its sizes are informational."
 )
+
+
+def get_s3_request_prices_text(aws_prices: AWSPrices) -> str:
+    """
+    The S3 request prices of a region: the tier 1 (list) and tier 2 (other) price, then the storage classes whose tier 2 price is not
+    the STANDARD one.
+    """
+    standard_price = aws_prices.get_s3_tier2_request_price_per_thousand(s3_standard_storage_class)
+    s = f"per 1000 S3 requests ${aws_prices.s3_tier1_request_price_per_thousand:g} list and ${standard_price:g} other"
+    other_prices = [f"{storage_class} ${price:g}" for storage_class, price in sorted(aws_prices.s3_tier2_request_prices_per_thousand.items()) if price != standard_price]
+    if other_prices:
+        s += f" ({', '.join(other_prices)})"
+    return s
 
 
 def get_prices_text() -> str:
@@ -41,8 +55,8 @@ def get_prices_text() -> str:
     if not all_aws_prices:
         return no_prices_text
     return "\n".join(
-        f"{aws_prices.region} : ${aws_prices.transfer_out_price_per_gb:g} per GB data transfer out, ${aws_prices.dynamodb_read_price_per_million_units:g} per million DynamoDB read units "
-        f"(from AWS on {datetime.fromtimestamp(aws_prices.fetched).date().isoformat()})"
+        f"{aws_prices.region} : ${aws_prices.transfer_out_price_per_gb:g} per GB data transfer out, {get_s3_request_prices_text(aws_prices)}, "
+        f"${aws_prices.dynamodb_read_price_per_million_units:g} per million DynamoDB read units (from AWS on {datetime.fromtimestamp(aws_prices.fetched).date().isoformat()})"
         for aws_prices in all_aws_prices
     )
 
@@ -125,6 +139,7 @@ class TransferWidget(QWidget):
             transfer_record.name,
             transfer_record.region or "",
             format_size(transfer_record.received_bytes),
+            str(transfer_record.requests) if transfer_record.requests > 0 else "",
             f"{transfer_record.read_units:g}" if transfer_record.read_units > 0.0 else "",
             format_cost(transfer_record.cost) if transfer_record.cost is not None else "",
         ]

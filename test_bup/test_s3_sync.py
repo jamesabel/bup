@@ -267,7 +267,9 @@ def test_real_sync_end_to_end_including_no_redownload(moto_s3_endpoint, tmp_path
     assert second_backup.errors == []
     assert second_backup.warnings == []
     assert "1 buckets, 1 backed up, 0 files synced, 0 excluded" in second_backup.infos
-    assert second_backup.transfer_records == []
+    # nothing was received, and finding that out made requests to S3 (at least the listing of the sync and the one that checks it)
+    assert [(transfer_record.name, transfer_record.received_bytes) for transfer_record in second_backup.transfer_records] == [("e2e-bucket", 0)]
+    assert second_backup.transfer_records[0].requests >= 2
     # untouched files prove the sync didn't download them again
     assert [local_file.stat().st_mtime_ns for local_file in local_files] == modification_times
 
@@ -300,7 +302,9 @@ def test_real_dry_run_downloads_nothing(moto_s3_endpoint, tmp_path):
 
     assert "dry-run-bucket : 1 files would be synced" in backup.infos
     assert backup.errors == []
-    assert backup.transfer_records == []
+    # nothing is received, and finding out what a sync would do makes requests to S3
+    assert [(transfer_record.name, transfer_record.received_bytes) for transfer_record in backup.transfer_records] == [("dry-run-bucket", 0)]
+    assert backup.transfer_records[0].requests >= 1
     assert os.listdir(tmp_path / "s3" / "dry-run-bucket") == []
 
 

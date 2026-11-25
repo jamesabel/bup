@@ -14,7 +14,7 @@ import urllib.request
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import appdirs
 from balsa import get_logger
@@ -27,11 +27,28 @@ log = get_logger(__application_name__)
 price_list_url = "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/{service_code}/current/{region}/index.json"
 data_transfer_service_code = "AWSDataTransfer"
 dynamodb_service_code = "AmazonDynamoDB"
+s3_service_code = "AmazonS3"
 
 price_max_age_seconds = 7 * 24 * 60 * 60  # fetch the prices again once the cached ones are this old
 fetch_retry_seconds = 60 * 60  # after a failed fetch, don't try that region again for this long (a backup may ask once per bucket)
 
 read_units_per_million = 1000000
+requests_per_thousand = 1000
+
+# The "group" a price list file has the S3 request prices under. The requests of bup that are tier 1 (PUT, COPY, POST and LIST) are
+# listings, which are not for an object of a storage class, so there is one tier 1 price. A tier 2 request (GET, HEAD and all other
+# requests) is priced by the storage class of its object, which is the name S3 itself gives the storage class (e.g. of a HeadObject).
+s3_standard_storage_class = "STANDARD"
+s3_tier1_request_group = "S3-API-Tier1"
+s3_tier2_request_groups = {
+    s3_standard_storage_class: "S3-API-Tier2",
+    "STANDARD_IA": "S3-API-SIA-Tier2",
+    "ONEZONE_IA": "S3-API-ZIA-Tier2",
+    "INTELLIGENT_TIERING": "S3-API-INT-Tier2",
+    "GLACIER_IR": "S3-API-GIR-Tier2",
+    "GLACIER": "S3-API-GLACIER-Tier2",
+    "DEEP_ARCHIVE": "S3-API-GDA-Tier2",
+}
 
 
 class AWSPriceError(Exception):
@@ -50,6 +67,17 @@ class AWSPrices:
     transfer_out_price_per_gb: float  # USD, data transfer out to the internet
     dynamodb_read_price_per_million_units: float  # USD, on-demand read request units
     fetched: float  # when the prices were fetched (epoch seconds)
+    s3_tier1_request_price_per_thousand: float  # USD, S3 PUT, COPY, POST and LIST requests (of bup: the listings)
+    # USD, S3 GET, HEAD and all other requests, by the storage class of the object. Always has STANDARD, which is also the price of a
+    # storage class that is not here.
+    s3_tier2_request_prices_per_thousand: Dict[str, float]
+
+    def get_s3_tier2_request_price_per_thousand(self, storage_class: str) -> float:
+        """
+        :param storage_class: the storage class of an S3 object, as S3 names it (e.g. "GLACIER_IR")
+        :return: USD per 1000 GET, HEAD or other tier 2 requests for objects of the storage class
+        """
+        return self.s3_tier2_request_prices_per_thousand.get(storage_class, self.s3_tier2_request_prices_per_thousand[s3_standard_storage_class])
 
 
 def get_aws_price_cache_path() -> Path:
@@ -100,17 +128,70 @@ def parse_dynamodb_read_price(offer: dict) -> float:
     raise AWSPriceError("no DynamoDB on-demand read request unit price")
 
 
+def find_s3_request_price(offer: dict, group: str) -> Optional[float]:
+    """
+    USD per 1000 S3 requests of a group, from a region's AmazonS3 price list file. A group can have other products too (e.g.
+    "S3-API-Tier2" also has the annotation requests), so the product is the one whose usage type is the requests of the group, e.g.
+    "EU-Requests-SIA-Tier2" for "S3-API-SIA-Tier2".
+
+    :param group: the "group" attribute of the product, e.g. "S3-API-SIA-Tier2"
+    :return: the price, or None if the file does not have it (e.g. a storage class the region does not have)
+    """
+    usage_type_end = "Requests-" + group.removeprefix("S3-API-")
+    for sku, product in offer["products"].items():
+        attributes = product["attributes"]
+        if attributes.get("group") == group and attributes.get("usagetype", "").endswith(usage_type_end):
+            return get_first_tier_price(offer, sku) * requests_per_thousand
+    return None
+
+
+def parse_s3_request_prices(offer: dict) -> Tuple[float, Dict[str, float]]:
+    """
+    The S3 request prices of a region's AmazonS3 price list file, in USD per 1000 requests.
+
+    :return: (the tier 1 price, the tier 2 price of each storage class the file has one for, which STANDARD is always one of)
+    """
+    tier1_price = find_s3_request_price(offer, s3_tier1_request_group)
+    if tier1_price is None:
+        raise AWSPriceError("no S3 tier 1 (PUT, COPY, POST and LIST) request price")
+    tier2_prices = {}
+    for storage_class, group in s3_tier2_request_groups.items():
+        if (tier2_price := find_s3_request_price(offer, group)) is not None:
+            tier2_prices[storage_class] = tier2_price
+    if s3_standard_storage_class not in tier2_prices:
+        raise AWSPriceError("no S3 tier 2 (GET and all other) request price")
+    return tier1_price, tier2_prices
+
+
 def fetch_aws_prices(region: str) -> AWSPrices:
     """
     Get a region's current prices from AWS. Raises OSError, ValueError, KeyError or AWSPriceError if they can't be had.
     """
     transfer_out_price_per_gb = parse_transfer_out_price(fetch_offer(data_transfer_service_code, region), region)
     dynamodb_read_price_per_million_units = parse_dynamodb_read_price(fetch_offer(dynamodb_service_code, region))
-    return AWSPrices(region, transfer_out_price_per_gb, dynamodb_read_price_per_million_units, time.time())
+    s3_tier1_request_price, s3_tier2_request_prices = parse_s3_request_prices(fetch_offer(s3_service_code, region))
+    return AWSPrices(region, transfer_out_price_per_gb, dynamodb_read_price_per_million_units, time.time(), s3_tier1_request_price, s3_tier2_request_prices)
 
 
-# the columns of the price cache table, which are the fields of AWSPrices in order
-price_cache_columns = "region, transfer_out_price_per_gb, dynamodb_read_price_per_million_units, fetched"
+# The columns of the price cache table, which are the fields of AWSPrices in order. The tier 2 request prices are a JSON object.
+price_cache_column_names = [
+    "region",
+    "transfer_out_price_per_gb",
+    "dynamodb_read_price_per_million_units",
+    "fetched",
+    "s3_tier1_request_price_per_thousand",
+    "s3_tier2_request_prices_per_thousand",
+]
+price_cache_columns = ", ".join(price_cache_column_names)
+
+
+def make_aws_prices(row: tuple) -> AWSPrices:
+    """
+    :param row: a row of the price cache table (its price_cache_columns)
+    :return: the prices of the row
+    """
+    *values, s3_tier2_request_prices_json = row
+    return AWSPrices(*values, json.loads(s3_tier2_request_prices_json))
 
 
 class AWSPriceCache:
@@ -125,9 +206,15 @@ class AWSPriceCache:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with closing(self._connect()) as connection, connection:
+            # A table without all the prices is of an earlier bup (0.18.0 and before had no S3 request prices). This is a cache, so
+            # it is made again and its prices are fetched again.
+            existing_column_names = [column[1] for column in connection.execute("PRAGMA table_info(aws_prices)")]
+            if existing_column_names and existing_column_names != price_cache_column_names:
+                connection.execute("DROP TABLE aws_prices")
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS aws_prices "
-                "(region TEXT PRIMARY KEY, transfer_out_price_per_gb REAL NOT NULL, dynamodb_read_price_per_million_units REAL NOT NULL, fetched REAL NOT NULL)"
+                "(region TEXT PRIMARY KEY, transfer_out_price_per_gb REAL NOT NULL, dynamodb_read_price_per_million_units REAL NOT NULL, fetched REAL NOT NULL, "
+                "s3_tier1_request_price_per_thousand REAL NOT NULL, s3_tier2_request_prices_per_thousand TEXT NOT NULL)"
             )
 
     def _connect(self) -> sqlite3.Connection:
@@ -139,7 +226,7 @@ class AWSPriceCache:
         """
         with closing(self._connect()) as connection:
             row = connection.execute(f"SELECT {price_cache_columns} FROM aws_prices WHERE region = ?", (region,)).fetchone()
-        return None if row is None else AWSPrices(*row)
+        return None if row is None else make_aws_prices(row)
 
     def get_all(self) -> List[AWSPrices]:
         """
@@ -147,7 +234,7 @@ class AWSPriceCache:
         """
         with closing(self._connect()) as connection:
             rows = connection.execute(f"SELECT {price_cache_columns} FROM aws_prices ORDER BY region").fetchall()
-        return [AWSPrices(*row) for row in rows]
+        return [make_aws_prices(row) for row in rows]
 
     def put(self, aws_prices: AWSPrices):
         """
@@ -155,8 +242,15 @@ class AWSPriceCache:
         """
         with closing(self._connect()) as connection, connection:
             connection.execute(
-                f"INSERT OR REPLACE INTO aws_prices ({price_cache_columns}) VALUES (?, ?, ?, ?)",
-                (aws_prices.region, aws_prices.transfer_out_price_per_gb, aws_prices.dynamodb_read_price_per_million_units, aws_prices.fetched),
+                f"INSERT OR REPLACE INTO aws_prices ({price_cache_columns}) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    aws_prices.region,
+                    aws_prices.transfer_out_price_per_gb,
+                    aws_prices.dynamodb_read_price_per_million_units,
+                    aws_prices.fetched,
+                    aws_prices.s3_tier1_request_price_per_thousand,
+                    json.dumps(aws_prices.s3_tier2_request_prices_per_thousand),
+                ),
             )
 
 

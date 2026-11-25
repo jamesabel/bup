@@ -129,7 +129,7 @@ def test_scanned_bytes_read_units_and_cost_are_reported(tmp_path, online):
 
     assert "my_table : received 2.0 GB, 1.6e+07 read units, approximately $2.18 before any AWS free allowance" in infos
     assert "transfer total : received 2.0 GB, 1.6e+07 read units, approximately $2.18 before any AWS free allowance" in infos
-    assert online.fetched == [("AWSDataTransfer", "us-west-2"), ("AmazonDynamoDB", "us-west-2")]  # the prices of the table's region
+    assert online.fetched == [("AWSDataTransfer", "us-west-2"), ("AmazonDynamoDB", "us-west-2"), ("AmazonS3", "us-west-2")]  # the prices of the table's region
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.

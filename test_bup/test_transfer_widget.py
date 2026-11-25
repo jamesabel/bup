@@ -11,9 +11,11 @@ import pytest
 from PyQt5.QtWidgets import QApplication, QAbstractSpinBox, QLineEdit
 
 from bup import BackupTypes, aws_prices
-from bup.aws_prices import AWSPrices, AWSPriceCache
+from bup.aws_prices import AWSPriceCache
 from bup.gui.transfer_widget import TransferWidget, columns, no_prices_text
 from bup.transfer import TransferRecord, transfer_emitter
+
+from .aws_price_offers import make_prices
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
@@ -31,7 +33,7 @@ def _row_text(transfer_widget: TransferWidget, row: int) -> dict:
 
 
 def _cache_prices(region: str, transfer_out_price_per_gb: float, fetched: datetime):
-    AWSPriceCache(aws_prices.get_aws_price_cache_path()).put(AWSPrices(region, transfer_out_price_per_gb, 0.125, fetched.timestamp()))
+    AWSPriceCache(aws_prices.get_aws_price_cache_path()).put(make_prices(region, transfer_out_price_per_gb, 0.125, fetched.timestamp()))
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
@@ -47,8 +49,10 @@ def test_prices_are_shown_but_cannot_be_entered(qapp):
     transfer_widget = TransferWidget()
 
     assert transfer_widget.prices_label.text() == (
-        "ap-southeast-2 : $0.114 per GB data transfer out, $0.125 per million DynamoDB read units (from AWS on 2026-11-21)\n"
-        "us-east-1 : $0.09 per GB data transfer out, $0.125 per million DynamoDB read units (from AWS on 2026-11-20)"
+        "ap-southeast-2 : $0.114 per GB data transfer out, per 1000 S3 requests $0.005 list and $0.0004 other (GLACIER_IR $0.01, STANDARD_IA $0.001), "
+        "$0.125 per million DynamoDB read units (from AWS on 2026-11-21)\n"
+        "us-east-1 : $0.09 per GB data transfer out, per 1000 S3 requests $0.005 list and $0.0004 other (GLACIER_IR $0.01, STANDARD_IA $0.001), "
+        "$0.125 per million DynamoDB read units (from AWS on 2026-11-20)"
     )
     # bup gets the prices itself - there is nothing for the user to type a price into
     assert transfer_widget.findChildren(QAbstractSpinBox) == []
@@ -85,13 +89,23 @@ def test_reported_transfer_is_shown(transfer_widget):
     s3_row = _row_text(transfer_widget, 0)
     assert s3_row["Time"] != ""
     del s3_row["Time"]
-    assert s3_row == {"Backup": "S3", "Name": "my-bucket", "Region": "eu-west-1", "Received": "2.0 KB", "Read units": "", "Approximate cost": "$0.5000"}
+    assert s3_row == {"Backup": "S3", "Name": "my-bucket", "Region": "eu-west-1", "Received": "2.0 KB", "S3 requests": "", "Read units": "", "Approximate cost": "$0.5000"}
     dynamodb_row = _row_text(transfer_widget, 1)
     del dynamodb_row["Time"]
-    assert dynamodb_row == {"Backup": "DynamoDB", "Name": "my_table", "Region": "us-west-2", "Received": "1.0 KB", "Read units": "12.5", "Approximate cost": "$0.2500"}
+    assert dynamodb_row == {"Backup": "DynamoDB", "Name": "my_table", "Region": "us-west-2", "Received": "1.0 KB", "S3 requests": "", "Read units": "12.5", "Approximate cost": "$0.2500"}
     github_row = _row_text(transfer_widget, 2)
     del github_row["Time"]
-    assert github_row == {"Backup": "github", "Name": "owner/repo", "Region": "", "Received": "4.0 KB", "Read units": "", "Approximate cost": ""}
+    assert github_row == {"Backup": "github", "Name": "owner/repo", "Region": "", "Received": "4.0 KB", "S3 requests": "", "Read units": "", "Approximate cost": ""}
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_s3_requests_of_a_transfer_are_shown(transfer_widget):
+    transfer_emitter.transfer_signal.emit(TransferRecord(BackupTypes.S3, "my-bucket (verification)", 0, cost=0.02, region="us-east-1", requests=2000))
+
+    row = _row_text(transfer_widget, 0)
+    del row["Time"]
+    assert row == {"Backup": "S3", "Name": "my-bucket (verification)", "Region": "us-east-1", "Received": "0 B", "S3 requests": "2000", "Read units": "", "Approximate cost": "$0.0200"}
+    assert transfer_widget.total_labels[BackupTypes.S3].text() == "S3 transfer total : received 0 B, 2000 S3 requests, approximately $0.0200 before any AWS free allowance"
 
 
 def _names(transfer_widget: TransferWidget) -> list:

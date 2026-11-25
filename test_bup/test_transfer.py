@@ -6,19 +6,24 @@ All tests, fixtures and helpers in this file are AI-authored (Claude Code).
 import logging
 
 import pytest
+from awsimple import S3RequestTier
 
 from bup import BupBase, BackupTypes, UITypes, __application_name__
-from bup.aws_prices import AWSPrices
 from bup.transfer import (
     TransferRecord,
     transfer_emitter,
     bytes_per_gb,
+    get_charged_request_count,
     get_transfer_out_cost,
     get_dynamodb_scan_cost,
+    get_s3_cost,
+    get_s3_request_cost,
     get_transfer_total,
     format_size,
     format_cost,
 )
+
+from .aws_price_offers import make_prices
 
 
 class _TransferBackup(BupBase):
@@ -39,7 +44,7 @@ def emitted_records():
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
 def test_costs_use_the_regions_prices():
-    aws_prices = AWSPrices("us-east-1", 0.09, 0.125, 0.0)
+    aws_prices = make_prices("us-east-1", 0.09, 0.125, 0.0)
 
     assert get_transfer_out_cost(10 * bytes_per_gb, aws_prices) == pytest.approx(0.90)
     assert get_transfer_out_cost(0, aws_prices) == 0.0
@@ -51,6 +56,48 @@ def test_costs_are_unknown_without_prices():
     # unknown, as opposed to free
     assert get_transfer_out_cost(10 * bytes_per_gb, None) is None
     assert get_dynamodb_scan_cost(10 * bytes_per_gb, 2000000.0, None) is None
+    assert get_s3_cost(10 * bytes_per_gb, {(S3RequestTier.tier2, "STANDARD"): 1000}, None) is None
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_s3_requests_are_priced_by_tier_and_storage_class():
+    aws_prices = make_prices("us-east-1")  # per 1000 requests: $0.005 tier 1, and tier 2 $0.0004 STANDARD, $0.001 STANDARD_IA, $0.01 GLACIER_IR
+
+    assert get_s3_request_cost({}, aws_prices) == 0.0
+    assert get_s3_request_cost({(S3RequestTier.tier1, "STANDARD"): 2000}, aws_prices) == pytest.approx(0.01)
+    assert get_s3_request_cost({(S3RequestTier.tier2, "STANDARD"): 10000}, aws_prices) == pytest.approx(0.004)
+    assert get_s3_request_cost({(S3RequestTier.tier2, "GLACIER_IR"): 10000}, aws_prices) == pytest.approx(0.1)  # 25 times a STANDARD one
+    assert get_s3_request_cost({(S3RequestTier.tier2, "STANDARD_IA"): 3000, (S3RequestTier.tier2, "GLACIER_IR"): 1000}, aws_prices) == pytest.approx(0.003 + 0.01)
+    # a storage class the region has no price for is priced as STANDARD
+    assert get_s3_request_cost({(S3RequestTier.tier2, "REDUCED_REDUNDANCY"): 10000}, aws_prices) == pytest.approx(0.004)
+    # a listing is tier 1 at one price, whatever storage class it is counted as
+    assert get_s3_request_cost({(S3RequestTier.tier1, "GLACIER_IR"): 2000}, aws_prices) == pytest.approx(0.01)
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_s3_requests_that_are_free_are_not_charged_or_counted():
+    tier_counts = {(S3RequestTier.free, "STANDARD"): 500, (S3RequestTier.tier1, "STANDARD"): 2, (S3RequestTier.tier2, "GLACIER_IR"): 3}
+
+    assert get_charged_request_count(tier_counts) == 5
+    assert get_charged_request_count({}) == 0
+    assert get_s3_request_cost({(S3RequestTier.free, "STANDARD"): 500}, make_prices("us-east-1")) == 0.0
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_s3_cost_is_the_data_transfer_plus_the_requests():
+    aws_prices = make_prices("us-east-1")
+
+    assert get_s3_cost(10 * bytes_per_gb, {(S3RequestTier.tier2, "GLACIER_IR"): 10000}, aws_prices) == pytest.approx(0.90 + 0.1)
+    assert get_s3_cost(0, {}, aws_prices) == 0.0
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_transfer_record_text_and_total_with_s3_requests():
+    transfer_record = TransferRecord(BackupTypes.S3, "my-bucket", 2048, cost=0.5, requests=1200)
+    assert str(transfer_record) == "my-bucket : received 2.0 KB, 1200 S3 requests, approximately $0.5000 before any AWS free allowance"
+
+    total = get_transfer_total(BackupTypes.S3, [transfer_record, TransferRecord(BackupTypes.S3, "my-bucket (verification)", 0, cost=0.25, requests=300)])
+    assert total == TransferRecord(BackupTypes.S3, "transfer total", 2048, cost=0.75, requests=1500)
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.

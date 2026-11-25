@@ -17,7 +17,7 @@ from balsa import get_logger
 
 from bup import __application_name__, BupBase, BackupTypes, get_preferences, ExclusionPreferences
 from bup.aws_access import get_aws_access_kwargs
-from bup.transfer import TransferRecord, get_transfer_out_cost
+from bup.transfer import TransferRecord, get_charged_request_count, get_s3_cost
 from bup.aws_prices import get_aws_prices
 
 log = get_logger(__application_name__)
@@ -305,14 +305,23 @@ class S3Backup(BupBase):
         self.sync_objects_out(self.warning_out, bucket.name, bucket.get_not_backed_up(), "not backed up")
         self.sync_objects_out(self.error_out, bucket.name, bucket.get_failed(), "could not be backed up")
 
-    def sync_transfer_out(self, bucket: SyncedBucket):
+    def usage_out(self, bucket: SyncedBucket, name: str, received_bytes: int = 0):
         """
-        Report what the sync of a bucket received from S3, and approximately what AWS charges for sending it (at the prices of the
-        bucket's region). Nothing is reported for a sync that downloaded nothing.
+        Report what was received from S3 for a bucket and the S3 requests that were made for it since this was last called for the
+        bucket (awsimple counts every request of the bucket's access), with approximately what AWS charges for both at the prices of
+        the bucket's region. Nothing is reported if nothing was received and no request was made.
+
+        :param bucket: the bucket
+        :param name: what the transfer is reported as, e.g. the name of the bucket
+        :param received_bytes: the size of what was downloaded
         """
-        if (synced_size := bucket.sync_result.get_size(S3SyncOutcome.downloaded)) > 0:
-            cost = get_transfer_out_cost(synced_size, get_aws_prices(bucket.region))
-            self.transfer_out(TransferRecord(BackupTypes.S3, bucket.name, synced_size, cost=cost, region=bucket.region))
+        usage = bucket.access.usage
+        tier_counts = usage.get_tier_counts()
+        usage.reset()  # what is reported next (e.g. the verification) starts from here
+        request_count = get_charged_request_count(tier_counts)
+        if received_bytes > 0 or request_count > 0:
+            cost = get_s3_cost(received_bytes, tier_counts, get_aws_prices(bucket.region))
+            self.transfer_out(TransferRecord(BackupTypes.S3, name, received_bytes, cost=cost, region=bucket.region, requests=request_count))
 
     def check_bucket_size(self, bucket: SyncedBucket) -> bool:
         """
@@ -412,6 +421,7 @@ class S3Backup(BupBase):
             if self.stop_requested or unreachable:
                 break
             bucket_verification = self.verify_bucket(bucket)
+            self.usage_out(bucket, f"{bucket.name} (verification)")  # a request for every object, which AWS charges for
             bucket_count += 1
             total_verified_count += bucket_verification.verified_count
             total_differ_count += bucket_verification.differ_count
@@ -475,23 +485,24 @@ class S3Backup(BupBase):
             total_synced_count += synced_count
             self.sync_exceptions_out(bucket)
 
-            # nothing was synced in a dry run, so there is nothing to check
+            # nothing was synced in a dry run, so there is nothing to check (finding out what a sync would do makes requests though)
             if dry_run:
                 count += 1
                 self.info_out(f"{bucket_name} : {synced_count} files would be synced")
+                self.usage_out(bucket, bucket_name)
                 continue
 
-            # before the transfer is reported, since that is when the history is updated
             self.counts.files_synced = total_synced_count
-            self.sync_transfer_out(bucket)
+            # when stopped, the downloads that had not started were not attempted, so there is nothing to check
+            if not self.stop_requested:
+                synced_buckets.append(bucket)
+                if self.check_bucket_size(bucket) and not bucket.get_failed():
+                    count += 1
+                    self.counts.backed_up = count
 
-            if self.stop_requested:
-                break  # the downloads that had not started were not attempted, so there is nothing to check
-
-            synced_buckets.append(bucket)
-            if self.check_bucket_size(bucket) and not bucket.get_failed():
-                count += 1
-                self.counts.backed_up = count
+            # After the check, whose listing of the bucket is a request too, and after the counts are set, since the history is
+            # updated when a transfer is reported. A stop ends the backup at the top of the loop.
+            self.usage_out(bucket, bucket_name, bucket.sync_result.get_size(S3SyncOutcome.downloaded))
 
         if dry_run:
             self.info_out(f"{len(bucket_names)} buckets, {count} dry run, {total_synced_count} files would be synced, {len(exclusions)} excluded")
@@ -499,4 +510,4 @@ class S3Backup(BupBase):
             self.info_out(f"{len(bucket_names)} buckets, {count} backed up, {total_synced_count} files synced, {len(exclusions)} excluded")
             if preferences.s3_verify and not self.stop_requested:
                 self.verify_backup(synced_buckets)
-            self.transfer_summary_out()
+        self.transfer_summary_out()

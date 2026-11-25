@@ -16,13 +16,14 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
+from awsimple import S3RequestTier
 from PyQt5.QtWidgets import QApplication
 
 import bup
 from bup import BackupTypes, UITypes, aws_prices, backup_history
 from bup.aws_prices import AWSPrices, AWSPriceCache
 from bup.backup_history import BackupCounts, BackupHistory, BackupStatus
-from bup.transfer import TransferRecord, transfer_emitter, get_transfer_out_cost, get_dynamodb_scan_cost, get_transfer_total
+from bup.transfer import TransferRecord, transfer_emitter, get_charged_request_count, get_dynamodb_scan_cost, get_s3_cost, get_transfer_total
 
 screenshot_width = 1500
 screenshot_height = 820
@@ -96,18 +97,35 @@ synthetic_warnings = {
     BackupTypes.S3: ['example-photos : S3 object "archive/2019.zip" not backed up : storage class GLACIER has to be restored before it can be read'],
 }
 
-synthetic_prices = [AWSPrices("us-east-1", 0.09, 0.125, time.time()), AWSPrices("eu-west-1", 0.09, 0.1415, time.time())]
+synthetic_s3_tier2_request_prices = {
+    "STANDARD": 0.0004,
+    "STANDARD_IA": 0.001,
+    "ONEZONE_IA": 0.001,
+    "INTELLIGENT_TIERING": 0.0004,
+    "GLACIER_IR": 0.01,
+    "GLACIER": 0.0004,
+    "DEEP_ARCHIVE": 0.0004,
+}
+synthetic_prices = [
+    AWSPrices("us-east-1", 0.09, 0.125, time.time(), 0.005, synthetic_s3_tier2_request_prices),
+    AWSPrices("eu-west-1", 0.09, 0.1415, time.time(), 0.005, synthetic_s3_tier2_request_prices),
+]
 
 
 def make_synthetic_transfer_records() -> list:
     prices = {region_prices.region: region_prices for region_prices in synthetic_prices}
     transfer_records = []
-    for bucket_name, region, received_bytes in (
-        ("example-photos", "us-east-1", 3 * 1024**3),
-        ("example-website-assets", "eu-west-1", 42 * 1024**2),
-        ("example-invoices", "us-east-1", 6 * 1024**2),
+    # each bucket: what its sync received and the requests it made, then the requests of its verification (one for each object)
+    for bucket_name, region, received_bytes, storage_class, sync_request_count, object_count in (
+        ("example-photos", "us-east-1", 3 * 1024**3, "GLACIER_IR", 1260, 48200),
+        ("example-website-assets", "eu-west-1", 42 * 1024**2, "STANDARD", 96, 3150),
+        ("example-invoices", "us-east-1", 6 * 1024**2, "STANDARD_IA", 31, 870),
     ):
-        transfer_records.append(TransferRecord(BackupTypes.S3, bucket_name, received_bytes, cost=get_transfer_out_cost(received_bytes, prices[region]), region=region))
+        sync_tier_counts = {(S3RequestTier.tier1, "STANDARD"): 2 + object_count // 1000, (S3RequestTier.tier2, storage_class): sync_request_count}
+        verify_tier_counts = {(S3RequestTier.tier2, storage_class): object_count}
+        for name, size, tier_counts in ((bucket_name, received_bytes, sync_tier_counts), (f"{bucket_name} (verification)", 0, verify_tier_counts)):
+            cost = get_s3_cost(size, tier_counts, prices[region])
+            transfer_records.append(TransferRecord(BackupTypes.S3, name, size, cost=cost, region=region, requests=get_charged_request_count(tier_counts)))
     for table_name, received_bytes, read_units in (("customers", 12 * 1024**2, 1500.0), ("orders", 180 * 1024**2, 22500.0)):
         cost = get_dynamodb_scan_cost(received_bytes, read_units, prices["us-east-1"])
         transfer_records.append(TransferRecord(BackupTypes.DynamoDB, table_name, received_bytes, read_units, cost, "us-east-1"))
