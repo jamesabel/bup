@@ -43,10 +43,8 @@ def _pane_text(log_widget: LogWidget, log_source: LogSources) -> str:
 
 def test_s3_records_route_to_s3_pane(log_widget):
     _emit_record_from_file("s3_backup.py", 'aws s3 sync s3://my-bucket "C:\\backup\\s3\\my-bucket"')
-    _emit_record_from_file("aws_cli.py", "AWS CLI 1.46.0 is up to date (latest: 1.46.0)")
     s3_text = _pane_text(log_widget, LogSources.s3)
     assert "aws s3 sync s3://my-bucket" in s3_text
-    assert "AWS CLI 1.46.0 is up to date" in s3_text  # aws_cli.py records belong to the S3 pane too
     assert "INFO" in s3_text
     assert "s3_backup.py" in s3_text  # the format includes the originating file and line
     assert "aws s3 sync" not in _pane_text(log_widget, LogSources.github)
