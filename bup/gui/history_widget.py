@@ -8,11 +8,12 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 from PyQt5.QtGui import QShowEvent
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QHeaderView
 from balsa import get_logger
 
 from bup import __application_name__
 from bup.backup_history import BackupRun, format_time, get_backup_history, history_emitter
+from bup.gui.gui_util import make_table, set_table_row
 from bup.transfer import format_size, format_cost
 
 log = get_logger(__application_name__)
@@ -39,6 +40,7 @@ columns = [
     "Warnings",
     "Error details",
 ]
+error_details_column = columns.index("Error details")
 
 history_note = (
     "One row per backup type each time it is run, from the GUI or the command line, most recent first. A backup that did not finish "
@@ -102,6 +104,9 @@ class HistoryWidget(QWidget):
     """
 
     def __init__(self):
+        """
+        Make the tab, with the backup history as it is now.
+        """
         super().__init__()
         self.setLayout(QVBoxLayout())
 
@@ -115,12 +120,9 @@ class HistoryWidget(QWidget):
 
         # every column is as wide as its contents, except the error details on the far right, which take up the remaining width
         # (an error message can be long - all of it is in the tool tip)
-        self.table = QTableWidget(0, len(columns))
-        self.table.setHorizontalHeaderLabels(columns)
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table = make_table(columns)
         self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(len(columns) - 1, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(error_details_column, QHeaderView.Stretch)
         self.layout().addWidget(self.table)
 
         self.reload()
@@ -140,11 +142,8 @@ class HistoryWidget(QWidget):
             self.status_label.setVisible(True)
         self.table.setRowCount(len(backup_runs))
         for row, backup_run in enumerate(backup_runs):
-            for column, text in enumerate(get_row_text(backup_run)):
-                item = QTableWidgetItem(text)
-                if columns[column] == "Error details":
-                    item.setToolTip("\n".join(backup_run.errors))  # every error message on record, not only the first
-                self.table.setItem(row, column, item)
+            items = set_table_row(self.table, row, get_row_text(backup_run))
+            items[error_details_column].setToolTip("\n".join(backup_run.errors))  # every error message on record, not only the first
 
     def showEvent(self, a0: QShowEvent) -> None:
         """

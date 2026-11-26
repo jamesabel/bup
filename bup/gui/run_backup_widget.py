@@ -6,6 +6,7 @@ import threading
 import time
 from enum import Enum
 from datetime import datetime
+from typing import Iterator, Tuple
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QGroupBox, QHBoxLayout, QTextEdit, QSplitter, QLabel
 from PyQt5.QtCore import Qt, QThread, QTimer
@@ -43,11 +44,14 @@ class RunAll(QThread):
         super().__init__()
 
     def run(self):
+        """
+        What the thread runs: start every backup, wait for them all, and note when the run ended.
+        """
         threading.current_thread().name = type(self).__name__  # QThreads otherwise show up in logs as "Dummy-N"
-        for backup_type in self.widget.backup_engines:
-            self.widget.backup_engines[backup_type].start()
-        for backup_type in self.widget.backup_engines:
-            self.widget.backup_engines[backup_type].wait()
+        for backup_engine in self.widget.backup_engines.values():
+            backup_engine.start()
+        for backup_engine in self.widget.backup_engines.values():
+            backup_engine.wait()
         now = int(round(datetime.now().timestamp()))
         # The automatic backup counts from here, whether the run completed or was stopped: the user who stopped a backup does not want
         # the automatic backup to start it again the next second.
@@ -90,7 +94,7 @@ class DisplayBox(QGroupBox):
         self.text_box = QTextEdit()
         self.text_box.setReadOnly(read_only)
         self.layout().addWidget(self.text_box)
-        self.text = []
+        self.text = []  # the lines that are shown, the oldest first
 
     def append_text(self, s):
         """
@@ -115,6 +119,9 @@ class DisplayBox(QGroupBox):
             cursor.deletePreviousChar()
 
     def clear_text(self):
+        """
+        Empty the box.
+        """
         self.text = []
         self.text_box.setText("")
 
@@ -125,6 +132,9 @@ class BackupWidget(QGroupBox):
     """
 
     def __init__(self, backup_type: BackupTypes):
+        """
+        :param backup_type: the backup type, whose name is the title of the box and what its exclusions are saved under
+        """
         self.backup_type = backup_type
         super().__init__(backup_type.name)
         self.setLayout(QVBoxLayout())
@@ -141,14 +151,12 @@ class BackupWidget(QGroupBox):
         for display_type in DisplayTypes:
             self.display_boxes[display_type] = DisplayBox(display_type.value, display_type is not DisplayTypes.exclusions)
             self.splitter.addWidget(self.display_boxes[display_type])
-            if display_type == DisplayTypes.exclusions:
-                # read exclusions into the DB
-                exclusions = ExclusionPreferences(self.backup_type.name)
-                self.display_boxes[display_type].text_box.setText("\n".join(exclusions.get()))
-                self.display_boxes[display_type].text_box.setToolTip(
-                    "One name per line. '#' starts a comment (whole line or trailing, e.g. 'my-bucket  # note'). Blank lines and surrounding whitespace are ignored."
-                )
-                self.display_boxes[display_type].text_box.textChanged.connect(self.exclusions_save_timer.start)
+
+        # show the exclusions as they are saved, and save them (a moment) after they are edited
+        exclusions_text_box = self.display_boxes[DisplayTypes.exclusions].text_box
+        exclusions_text_box.setText("\n".join(ExclusionPreferences(self.backup_type.name).get()))
+        exclusions_text_box.setToolTip("One name per line. '#' starts a comment (whole line or trailing, e.g. 'my-bucket  # note'). Blank lines and surrounding whitespace are ignored.")
+        exclusions_text_box.textChanged.connect(self.exclusions_save_timer.start)
 
     def flush_exclusions(self):
         """
@@ -160,15 +168,11 @@ class BackupWidget(QGroupBox):
 
     def exclusions(self):
         """
-        write exclusions out to the DB
+        Write the exclusions out to the preferences as they are typed, other than the blank lines and the whitespace around a line
+        (a comment is kept: it is the backups that leave it out, see ExclusionPreferences.get_no_comments()).
         """
-        exclusions = ExclusionPreferences(self.backup_type.name)
-        line_list = []
-        for line in self.display_boxes[DisplayTypes.exclusions].text_box.toPlainText().splitlines():
-            line = line.strip()
-            if len(line) > 0:
-                line_list.append(line)
-        exclusions.set(line_list)
+        lines = [line.strip() for line in self.display_boxes[DisplayTypes.exclusions].text_box.toPlainText().splitlines()]
+        ExclusionPreferences(self.backup_type.name).set([line for line in lines if len(line) > 0])
 
 
 class RunBackupWidget(QWidget):
@@ -177,6 +181,9 @@ class RunBackupWidget(QWidget):
     """
 
     def __init__(self):
+        """
+        Make the tab, with a backup (not started) and a box of each backup type, as it was when bup was last closed.
+        """
         super().__init__()
 
         self.most_recent_backup = None  # when the most recent run ended (epoch seconds), which the automatic backup counts from
@@ -247,8 +254,8 @@ class RunBackupWidget(QWidget):
         Ask every backup to stop (see BupBase.request_stop()), and tell the user that it is being done: a backup can take a while to
         get to where it stops.
         """
-        for backup_type in self.backup_engines:
-            self.backup_engines[backup_type].request_stop()
+        for backup_engine in self.backup_engines.values():
+            backup_engine.request_stop()
         if self.run_all.isRunning():
             status_emitter.status_signal.emit(stopping_text)
             self.stop_in_status_line = True
@@ -284,6 +291,15 @@ class RunBackupWidget(QWidget):
         """
         return f"{backup_type.name}_{display_type.name}_{height_width}"
 
+    def get_display_box_layouts(self) -> Iterator[Tuple[DisplayBox, str, str]]:
+        """
+        :return: every display box of every backup type, each with the names of the preferences its height and its width are saved as
+        """
+        for backup_type in BackupTypes:
+            for display_type in DisplayTypes:
+                display_box = self.backup_status[backup_type].display_boxes[display_type]
+                yield display_box, self.get_layout_key(backup_type, display_type, "height"), self.get_layout_key(backup_type, display_type, "width")
+
     def save_state(self):
         """
         Save the exclusions, the sizes of the display boxes and the time of the most recent completed backup, for the next time bup
@@ -292,10 +308,9 @@ class RunBackupWidget(QWidget):
         preferences = get_gui_preferences()
         for backup_type in BackupTypes:
             self.backup_status[backup_type].flush_exclusions()
-        for backup_type in BackupTypes:
-            for display_type in DisplayTypes:
-                setattr(preferences, self.get_layout_key(backup_type, display_type, "height"), self.backup_status[backup_type].display_boxes[display_type].height())
-                setattr(preferences, self.get_layout_key(backup_type, display_type, "width"), self.backup_status[backup_type].display_boxes[display_type].width())
+        for display_box, height_key, width_key in self.get_display_box_layouts():
+            setattr(preferences, height_key, display_box.height())
+            setattr(preferences, width_key, display_box.width())
         preferences.most_recent_backup = self.most_recent_completed_backup
 
     def restore_state(self):
@@ -303,13 +318,12 @@ class RunBackupWidget(QWidget):
         Restore what save_state() saved.
         """
         preferences = get_gui_preferences()
-        for backup_type in BackupTypes:
-            for display_type in DisplayTypes:
-                height = to_positive_int(getattr(preferences, self.get_layout_key(backup_type, display_type, "height"), None))
-                width = to_positive_int(getattr(preferences, self.get_layout_key(backup_type, display_type, "width"), None))
-                # make sure all windows come up as visible, even if not set or the user has reduced them to zero
-                if height is not None and width is not None:
-                    self.backup_status[backup_type].display_boxes[display_type].resize(width, height)
+        for display_box, height_key, width_key in self.get_display_box_layouts():
+            height = to_positive_int(getattr(preferences, height_key, None))
+            width = to_positive_int(getattr(preferences, width_key, None))
+            # make sure all windows come up as visible, even if not set or the user has reduced them to zero
+            if height is not None and width is not None:
+                display_box.resize(width, height)
 
         self.most_recent_backup = preferences.most_recent_backup
         self.most_recent_completed_backup = preferences.most_recent_backup

@@ -3,9 +3,9 @@ Small helpers that the GUI's widgets share.
 """
 
 from datetime import datetime
-from typing import Optional, Union
+from typing import List, Optional, Sequence, Union
 
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PyQt5.QtWidgets import QAbstractItemView, QHBoxLayout, QHeaderView, QLabel, QTableWidget, QTableWidgetItem, QWidget
 
 
 def make_row(*items: Union[QWidget, str]) -> QWidget:
@@ -22,6 +22,35 @@ def make_row(*items: Union[QWidget, str]) -> QWidget:
         layout.addWidget(QLabel(item) if isinstance(item, str) else item)
     layout.addStretch()
     return row
+
+
+def make_table(column_titles: Sequence[str]) -> QTableWidget:
+    """
+    Make a table that shows rows of text: it has no rows yet, the user can not edit it, and every column is as wide as its contents.
+
+    :param column_titles: the title of each column
+    :return: the table
+    """
+    table = QTableWidget(0, len(column_titles))
+    table.setHorizontalHeaderLabels(column_titles)
+    table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+    table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+    return table
+
+
+def set_table_row(table: QTableWidget, row: int, row_text: Sequence[str]) -> List[QTableWidgetItem]:
+    """
+    Set the text of a row of a table, which has to be a row of the table already.
+
+    :param table: the table
+    :param row: the index of the row
+    :param row_text: the text of each column of the row, from the first column on
+    :return: the items that were made, one per column that was given
+    """
+    items = [QTableWidgetItem(text) for text in row_text]
+    for column, item in enumerate(items):
+        table.setItem(row, column, item)
+    return items
 
 
 def to_positive_int(value) -> Optional[int]:
