@@ -1,7 +1,8 @@
 """
 The S3 backup: every bucket is synced to a local directory with awsimple's S3Access.sync_to_directory() (which never deletes a local
 file), the sync is checked against a listing of the bucket, and optionally every local file is then verified against the metadata
-of its S3 object (with awsimple's S3Access.verify_directory()). See README "S3 backup".
+of its S3 object (with awsimple's S3Access.verify_directory()), and a local file that has the contents of its S3 object but another
+modification time can then be given the time of the S3 object (see s3_mtime_fix.py). See README "S3 backup".
 """
 
 import os
@@ -9,7 +10,7 @@ import threading
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Callable, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from awsimple import S3Access, S3SyncObject, S3SyncOutcome, S3SyncResult, S3VerifyObject, S3VerifyOutcome, AWSimpleException
 from botocore.exceptions import BotoCoreError, ClientError
@@ -17,6 +18,7 @@ from balsa import get_logger
 
 from bup import __application_name__, BupBase, BackupTypes, get_preferences, ExclusionPreferences
 from bup.aws_access import get_aws_access_kwargs
+from bup.s3_mtime_fix import MtimeFix, MtimeFixOutcome, fix_local_mtime, remove_temp_dir, temp_dir_name
 from bup.transfer import TransferRecord, get_charged_request_count, get_s3_cost
 from bup.aws_prices import get_aws_prices
 
@@ -355,12 +357,71 @@ class S3Backup(BupBase):
     # the optional verification of every local file against S3
     # ----------------------------------------------------------------------------------------------------------------------------
 
-    def verify_bucket(self, bucket: SyncedBucket) -> BucketVerification:
+    def remove_mtime_fix_temp_dir(self, temp_dir: Path):
+        """
+        Remove the directory of the downloads of the fix of modification times, with anything a run that was cut short left in it.
+        A directory that can not be removed is an error: it can hold a download, which is not part of the backup.
+        """
+        try:
+            remove_temp_dir(temp_dir)
+        except OSError as e:
+            self.error_out(f'could not remove the temporary directory "{temp_dir}" of the downloads that fix modification times : {e}')
+
+    def fix_mtimes(self, bucket: SyncedBucket, mtime_differs: List[S3VerifyObject], temp_dir: Path) -> Tuple[Dict[str, MtimeFix], Optional[str]]:
+        """
+        Give the local files that the verification found to have another modification time than their S3 object the time of the S3
+        object, one file after the other, each only once its contents are known to be the S3 object's (see fix_local_mtime(), which
+        downloads an object S3 has no hash of to compare it). Every time that is changed is in the application log. This ends when
+        the backup is stopped, and when S3 can no longer be reached (which is one error).
+
+        A download is deleted as soon as it has been compared. The directory of the downloads is also removed before the first file
+        (a run that was cut short can have left a download in it) and after the last one, however this ends.
+
+        :param bucket: the bucket
+        :param mtime_differs: the objects of the verification whose local file has another modification time
+        :param temp_dir: the directory of the downloads, on the backup drive
+        :return: (the outcome of every file this got to, by S3 key, and why S3 could not be reached - None if it could be)
+        """
+        if len(mtime_differs) == 0:
+            return {}, None
+        self.remove_mtime_fix_temp_dir(temp_dir)
+        try:
+            return self._fix_mtimes(bucket, mtime_differs, temp_dir)
+        finally:
+            self.remove_mtime_fix_temp_dir(temp_dir)
+
+    def _fix_mtimes(self, bucket: SyncedBucket, mtime_differs: List[S3VerifyObject], temp_dir: Path) -> Tuple[Dict[str, MtimeFix], Optional[str]]:
+        """
+        fix_mtimes(), other than the removal of the directory of the downloads.
+        """
+        fixes: Dict[str, MtimeFix] = {}
+        for verify_object in mtime_differs:
+            if self.stop_requested:
+                break
+            assert verify_object.local_path is not None  # a file that was verified
+            fix = fix_local_mtime(bucket.access, verify_object.key, verify_object.local_path, temp_dir)
+            if fix.outcome == MtimeFixOutcome.failed and (unreachable_reason := get_s3_unreachable_reason(bucket.access.client, bucket.name)) is not None:
+                self.error_out(f"{bucket.name} : S3 could not be reached while fixing modification times, which ended there : {unreachable_reason}")
+                return fixes, unreachable_reason
+            fixes[verify_object.key] = fix
+            if fix.outcome == MtimeFixOutcome.fixed:
+                how = "the S3 object was downloaded to compare" if fix.downloaded else "the hash is the S3 object's"
+                log.info(f'{bucket.name} : "{verify_object.key}" : modification time changed from {fix.old_mtime} to {fix.new_mtime}, that of the S3 object ({how})')
+        return fixes, None
+
+    def verify_bucket(self, bucket: SyncedBucket, mtime_fix_temp_dir: Optional[Path] = None) -> BucketVerification:
         """
         Verify every local file that the sync says is a current copy of its S3 object (downloaded or already up to date) against the
         metadata of the object, with awsimple's S3Access.verify_directory(): size, hash and modification time. A file that is not a
         copy, or that could not be verified, is an error. A modification time that differs (of a file that has the contents of its
         S3 object) is a warning. If S3 can no longer be reached, the verification ends there (see VerifyWatch), which is one error.
+
+        With mtime_fix_temp_dir, the files whose modification time differs are then given the time of their S3 object (see
+        fix_mtimes()), and are not a warning. One that turns out not to be a copy of its S3 object is an error (it is one of the
+        files that differ), and so is one whose time could not be fixed.
+
+        :param bucket: the bucket
+        :param mtime_fix_temp_dir: the directory of the downloads of the fix, to fix the modification times that differ (None to not fix them)
         :return: what the verification found
         """
         log.info(f'{bucket.name} : verifying the files in "{bucket.destination}" against S3')
@@ -373,10 +434,19 @@ class S3Backup(BupBase):
             return BucketVerification()
         watch.check_last_failures()
 
+        mtime_differs = verify_result.get_objects(S3VerifyOutcome.mtime_differs)
+        mtime_fixes: Dict[str, MtimeFix] = {}
+        fix_unreachable_reason = None
+        if mtime_fix_temp_dir is not None and watch.unreachable_reason is None:
+            mtime_fixes, fix_unreachable_reason = self.fix_mtimes(bucket, mtime_differs, mtime_fix_temp_dir)
+        fix_differ = [fix for fix in mtime_fixes.values() if fix.outcome == MtimeFixOutcome.differs]  # found not to be a copy by the fix
+        fix_failed = [fix for fix in mtime_fixes.values() if fix.outcome == MtimeFixOutcome.failed]
+        fixed = [fix for fix in mtime_fixes.values() if fix.outcome == MtimeFixOutcome.fixed]
+
         differ = verify_result.get_objects(S3VerifyOutcome.differs)
         self.lines_out(
             self.error_out,
-            [f'{bucket.name} : "{verify_object.key}" is not a copy of the S3 object : {verify_object.reason}' for verify_object in differ],
+            [f'{bucket.name} : "{differs.key}" is not a copy of the S3 object : {differs.reason}' for differs in [*differ, *fix_differ]],
             f"{bucket.name} : {{}} more local files are not a copy of their S3 object",
         )
         # the files that failed because S3 could not be reached are one error (below), and the others are an error each
@@ -386,10 +456,15 @@ class S3Backup(BupBase):
             [f'{bucket.name} : "{verify_object.key}" could not be verified : {verify_object.reason}' for verify_object in failed],
             f"{bucket.name} : {{}} more local files could not be verified",
         )
-        mtime_differs = verify_result.get_objects(S3VerifyOutcome.mtime_differs)
+        self.lines_out(
+            self.error_out,
+            [f'{bucket.name} : "{fix.key}" : the modification time could not be fixed : {fix.reason}' for fix in fix_failed],
+            f"{bucket.name} : {{}} more modification times could not be fixed",
+        )
+        # the files the fix got to are either fixed or an error (above)
         self.lines_out(
             self.warning_out,
-            [f'{bucket.name} : "{verify_object.key}" has the contents of the S3 object, but {verify_object.reason}' for verify_object in mtime_differs],
+            [f'{bucket.name} : "{verify_object.key}" has the contents of the S3 object, but {verify_object.reason}' for verify_object in mtime_differs if verify_object.key not in mtime_fixes],
             f"{bucket.name} : {{}} more local files have a modification time that is not their S3 object's",
         )
         same_contents = verify_result.get_objects(S3VerifyOutcome.verified) + mtime_differs
@@ -402,17 +477,30 @@ class S3Backup(BupBase):
                 f"{watch.unreachable_reason}"
             )
         could_not = f", {len(failed)} could not be verified" if failed else ""
+        differ_count = len(differ) + len(fix_differ)
         self.info_out(
-            f"{bucket.name} : verified {verified_count} of {verified_count + not_verified_count} files against S3 : {len(differ)} differ, "
-            f"{len(mtime_differs)} have a different modification time, {no_hash_count} have no hash in S3 (size and modification time only){could_not}"
+            f"{bucket.name} : verified {verified_count} of {verified_count + not_verified_count} files against S3 : {differ_count} differ, "
+            f"{len(mtime_differs) - len(fix_differ)} have a different modification time, {no_hash_count} have no hash in S3 (size and modification time only){could_not}"
         )
-        return BucketVerification(verified_count, len(differ), len(failed), watch.unreachable_reason is not None)
+        if mtime_fix_temp_dir is not None and len(mtime_differs) > 0:
+            downloaded_count = sum(fix.downloaded for fix in fixed)
+            self.info_out(
+                f"{bucket.name} : fixed the modification time of {len(fixed)} of {len(mtime_differs)} files that have a different modification time "
+                f"({downloaded_count} after a download to compare, since S3 has no hash of them)"
+            )
+        return BucketVerification(verified_count, differ_count, len(failed), watch.unreachable_reason is not None or fix_unreachable_reason is not None)
 
     def verify_backup(self, buckets: List[SyncedBucket]):
         """
         Verify the local files of the buckets that were synced against S3 (see verify_bucket()). The verification ends with the
         bucket during which S3 can no longer be reached (e.g. the internet connection drops): the buckets after it would only fail.
+        With the s3_fix_mtime preference, a local file that has the contents of its S3 object but another modification time is
+        given the time of the S3 object. What that downloads (the objects S3 has no hash of) goes to a temporary directory in the
+        backup directory, which has the room for it.
         """
+        preferences = get_preferences(self.ui_type)
+        fix_mtime = bool(preferences.s3_fix_mtime)  # the preferences database gives a bool preference as an int (and None if it was never set)
+        mtime_fix_temp_dir = Path(preferences.backup_directory, temp_dir_name) if fix_mtime else None
         self.info_out(f"verifying {len(buckets)} buckets against S3 (this makes a request to S3 for every object, and reads every local file)")
         bucket_count = 0
         total_verified_count = 0
@@ -422,8 +510,10 @@ class S3Backup(BupBase):
         for bucket in buckets:
             if self.stop_requested or unreachable:
                 break
-            bucket_verification = self.verify_bucket(bucket)
-            self.usage_out(bucket, f"{bucket.name} (verification)")  # a request for every object, which AWS charges for
+            bucket_verification = self.verify_bucket(bucket, mtime_fix_temp_dir)
+            # a request for every object, which AWS charges for. Only the fix of modification times receives objects (those S3 has no hash of).
+            received_bytes = sum(bucket.access.usage.get_download_sizes().values()) if fix_mtime else 0
+            self.usage_out(bucket, f"{bucket.name} (verification)", received_bytes)
             bucket_count += 1
             total_verified_count += bucket_verification.verified_count
             total_differ_count += bucket_verification.differ_count
@@ -441,7 +531,8 @@ class S3Backup(BupBase):
     def run_backup(self):
         """
         Back up every bucket: sync it, report what the sync did, and check it. A failure of one bucket does not end the backup of the
-        others. With the s3_verify preference, every local file is then verified against S3.
+        others. With the s3_verify preference, every local file is then verified against S3, and with the s3_fix_mtime preference
+        as well, the modification times that the verification finds to differ are fixed.
         """
         preferences = get_preferences(self.ui_type)
         dry_run = preferences.dry_run

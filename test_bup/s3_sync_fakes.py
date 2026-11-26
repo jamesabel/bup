@@ -34,12 +34,13 @@ def head_bucket_response(bucket_region: str) -> dict:
     return {"BucketRegion": bucket_region, "ResponseMetadata": {"HTTPHeaders": {"x-amz-bucket-region": bucket_region}}}
 
 
-def make_preferences(tmp_path: Path, dry_run: bool = False, s3_size_only: bool = False, aws_region: Optional[str] = None, s3_verify: bool = False) -> MagicMock:
+def make_preferences(tmp_path: Path, dry_run: bool = False, s3_size_only: bool = False, aws_region: Optional[str] = None, s3_verify: bool = False, s3_fix_mtime: bool = False) -> MagicMock:
     return MagicMock(
         backup_directory=str(tmp_path),
         dry_run=dry_run,
         s3_size_only=s3_size_only,
         s3_verify=s3_verify,
+        s3_fix_mtime=s3_fix_mtime,
         aws_profile=None,
         aws_access_key_id=None,
         aws_secret_access_key=None,

@@ -54,6 +54,7 @@ def cli_main(args):
     preferences.dry_run = args.dry_run
     preferences.s3_size_only = args.size_only
     preferences.s3_verify = args.verify
+    preferences.s3_fix_mtime = args.fix_mtime
 
     # Set the exclusions for the selected backup type(s).  The values are stored for subsequent runs.
     # An explicitly empty -e (no values) clears the stored exclusions.
