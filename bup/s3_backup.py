@@ -3,31 +3,32 @@ The S3 backup: every bucket is synced to a local directory with awsimple's S3Acc
 file), the sync is checked against a listing of the bucket, and optionally every local file is then verified against the metadata
 of its S3 object (with awsimple's S3Access.verify_directory()), and a local file that has the contents of its S3 object but another
 modification time can then be given the time of the S3 object (see s3_mtime_fix.py). See README "S3 backup".
+
+The parts: the helpers of a sync and its check (below), SyncedBucket, and S3Backup, whose methods are grouped as output, the sync
+of a bucket, the verification and the backup itself. The watch of a verification is in s3_verify.py.
 """
 
 import os
-import threading
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
-from awsimple import S3Access, S3SyncObject, S3SyncOutcome, S3SyncResult, S3VerifyObject, S3VerifyOutcome, AWSimpleException
+from awsimple import S3Access, S3SyncObject, S3SyncOutcome, S3SyncResult, S3VerifyObject, S3VerifyOutcome, S3VerifyResult, AWSimpleException
 from botocore.exceptions import BotoCoreError, ClientError
 from balsa import get_logger
 
 from bup import __application_name__, BupBase, BackupTypes, get_preferences, ExclusionPreferences
 from bup.aws_access import get_aws_access_kwargs
+from bup.backup_types import get_backup_type_directory
 from bup.s3_mtime_fix import MtimeFix, MtimeFixOutcome, fix_local_mtime, remove_temp_dir, temp_dir_name
+from bup.s3_verify import BucketVerification, VerifyWatch, get_s3_unreachable_reason, verify_failures_before_reachability_check  # the last for those who import it from here
 from bup.transfer import TransferRecord, get_charged_request_count, get_s3_cost
 from bup.aws_prices import get_aws_prices
 
 log = get_logger(__application_name__)
 
 max_keys_to_list = 20  # cap on the S3 keys named in the backup output for one bucket and one kind of outcome
-
-# during a verification, find out if S3 can still be reached once this many objects have failed one after the other (see VerifyWatch)
-verify_failures_before_reachability_check = 3
 
 
 # sundry candidate
@@ -152,87 +153,6 @@ class SyncedBucket:
         return self.sync_result.get_objects(S3SyncOutcome.downloaded) + self.sync_result.get_objects(S3SyncOutcome.up_to_date)
 
 
-def get_s3_unreachable_reason(s3_client, bucket_name: str) -> Optional[str]:
-    """
-    Find out if S3 can be reached, with one request about a bucket. Any answer from S3 means it can be, whatever the answer is
-    (e.g. access to the bucket is denied).
-    :return: None if S3 answered, otherwise why the request could not be made (e.g. no connection, or the credentials are no longer there)
-    """
-    try:
-        s3_client.head_bucket(Bucket=bucket_name)
-    except ClientError:
-        return None  # an answer from S3
-    except BotoCoreError as e:
-        return str(e)
-    return None
-
-
-@dataclass
-class BucketVerification:
-    """
-    What the verification of a bucket against S3 found (see S3Backup.verify_bucket()).
-    """
-
-    verified_count: int = 0  # files that were compared with their S3 object, or that this was attempted for
-    differ_count: int = 0  # those that are not a copy of their S3 object
-    failed_count: int = 0  # those that could not be verified
-    unreachable: bool = False  # True if the verification ended because S3 could no longer be reached
-
-
-class VerifyWatch:
-    """
-    Watches the verification of a bucket as it goes, to end it when S3 can no longer be reached (e.g. the internet connection drops).
-    awsimple makes a failed request the outcome of that one object and goes on with the others, so without this every file that is
-    left fails after its own retries, and is an error of its own.
-
-    A failed object does not say why it failed, so once verify_failures_before_reachability_check objects have failed one after the
-    other, S3 is asked about the bucket. If there is no answer, the verification is stopped, and those failures (with any of objects
-    that were under way) are in unreachable_keys. If S3 answers, the objects failed for reasons of their own.
-
-    The verification is given the stop event of this watch, which is also set when the backup is stopped.
-    """
-
-    def __init__(self, bucket: SyncedBucket, backup_stop_event: threading.Event):
-        """
-        :param bucket: the bucket that is verified
-        :param backup_stop_event: the stop event of the backup
-        """
-        self.bucket = bucket
-        self.backup_stop_event = backup_stop_event
-        self.stop_event = threading.Event()  # for the verification: the backup was stopped, or S3 can not be reached
-        self.unreachable_reason: Optional[str] = None  # why S3 can not be reached (None while it can be, as far as is known)
-        self.unreachable_keys: Set[str] = set()  # the objects that failed because S3 could not be reached
-        self._last_failed_keys: List[str] = []  # the objects that failed since an object was last verified, or S3 last answered
-
-    def object_out(self, verify_object: S3VerifyObject):
-        """
-        The callback of the verification, which awsimple calls (from the thread of the backup) with every object as its outcome is known.
-        """
-        if self.backup_stop_event.is_set():
-            self.stop_event.set()
-        if verify_object.outcome == S3VerifyOutcome.failed:
-            self._last_failed_keys.append(verify_object.key)
-            if self.unreachable_reason is not None:
-                self.unreachable_keys.add(verify_object.key)  # was under way when S3 was found to be unreachable
-            elif len(self._last_failed_keys) >= verify_failures_before_reachability_check:
-                self.check_last_failures()
-        elif verify_object.outcome in (S3VerifyOutcome.verified, S3VerifyOutcome.differs, S3VerifyOutcome.mtime_differs):
-            self._last_failed_keys = []  # the metadata of this object was had, so S3 can be reached
-
-    def check_last_failures(self):
-        """
-        If objects failed since an object was last verified, find out if that is because S3 can not be reached, and if so stop the
-        verification. Also called once the verification is done, for a bucket that ends with fewer failures than are checked during it.
-        """
-        if self.unreachable_reason is None and len(self._last_failed_keys) > 0:
-            self.unreachable_reason = get_s3_unreachable_reason(self.bucket.access.client, self.bucket.name)
-            if self.unreachable_reason is not None:
-                log.warning(f"{self.bucket.name} : S3 can not be reached, so the verification ends : {self.unreachable_reason}")
-                self.unreachable_keys.update(self._last_failed_keys)
-                self.stop_event.set()
-            self._last_failed_keys = []
-
-
 class S3Backup(BupBase):
     """
     Backs up every S3 bucket the credentials can list (other than the excluded ones) to <backup directory>/s3/<bucket>.
@@ -266,6 +186,16 @@ class S3Backup(BupBase):
         self.lines_out(
             out, [f'{bucket_name} : S3 object "{sync_object.key}" {description} : {sync_object.reason}' for sync_object in sync_objects], f"{bucket_name} : {{}} more S3 objects {description}"
         )
+
+    def files_out(self, out: Callable[[str], None], bucket_name: str, files: Sequence[Union[S3VerifyObject, MtimeFix]], description: str, more: str):
+        """
+        Report what the verification (or the fix of modification times) found for local files, a line per file with its reason.
+        :param out: where to report (e.g. self.error_out)
+        :param files: the outcome of each file to report, which has the key and the reason (only the first max_keys_to_list are named)
+        :param description: what was found for these files, which the reason of a file follows, e.g. "could not be verified : "
+        :param more: what the files that are not named are counted as, e.g. "local files could not be verified"
+        """
+        self.lines_out(out, [f'{bucket_name} : "{file.key}" {description}{file.reason}' for file in files], f"{bucket_name} : {{}} more {more}")
 
     # ----------------------------------------------------------------------------------------------------------------------------
     # the sync of a bucket
@@ -412,20 +342,18 @@ class S3Backup(BupBase):
     def verify_bucket(self, bucket: SyncedBucket, mtime_fix_temp_dir: Optional[Path] = None) -> BucketVerification:
         """
         Verify every local file that the sync says is a current copy of its S3 object (downloaded or already up to date) against the
-        metadata of the object, with awsimple's S3Access.verify_directory(): size, hash and modification time. A file that is not a
-        copy, or that could not be verified, is an error. A modification time that differs (of a file that has the contents of its
-        S3 object) is a warning. If S3 can no longer be reached, the verification ends there (see VerifyWatch), which is one error.
+        metadata of the object, with awsimple's S3Access.verify_directory(): size, hash and modification time. If S3 can no longer
+        be reached, the verification ends there (see VerifyWatch). What was found is reported by verification_out().
 
         With mtime_fix_temp_dir, the files whose modification time differs are then given the time of their S3 object (see
-        fix_mtimes()), and are not a warning. One that turns out not to be a copy of its S3 object is an error (it is one of the
-        files that differ), and so is one whose time could not be fixed.
+        fix_mtimes()).
 
         :param bucket: the bucket
         :param mtime_fix_temp_dir: the directory of the downloads of the fix, to fix the modification times that differ (None to not fix them)
         :return: what the verification found
         """
         log.info(f'{bucket.name} : verifying the files in "{bucket.destination}" against S3')
-        watch = VerifyWatch(bucket, self.stop_event)
+        watch = VerifyWatch(bucket.access.client, bucket.name, self.stop_event)
         try:
             verify_result = bucket.access.verify_directory(bucket.destination, sync_result=bucket.sync_result, stop_event=watch.stop_event, callback=watch.object_out)
         except (ClientError, BotoCoreError, AWSimpleException, OSError) as e:
@@ -434,61 +362,70 @@ class S3Backup(BupBase):
             return BucketVerification()
         watch.check_last_failures()
 
-        mtime_differs = verify_result.get_objects(S3VerifyOutcome.mtime_differs)
-        mtime_fixes: Dict[str, MtimeFix] = {}
+        mtime_fixes: Optional[Dict[str, MtimeFix]] = None  # None: the modification times are not fixed
         fix_unreachable_reason = None
-        if mtime_fix_temp_dir is not None and watch.unreachable_reason is None:
-            mtime_fixes, fix_unreachable_reason = self.fix_mtimes(bucket, mtime_differs, mtime_fix_temp_dir)
-        fix_differ = [fix for fix in mtime_fixes.values() if fix.outcome == MtimeFixOutcome.differs]  # found not to be a copy by the fix
-        fix_failed = [fix for fix in mtime_fixes.values() if fix.outcome == MtimeFixOutcome.failed]
-        fixed = [fix for fix in mtime_fixes.values() if fix.outcome == MtimeFixOutcome.fixed]
+        if mtime_fix_temp_dir is not None:
+            mtime_fixes = {}
+            if watch.unreachable_reason is None:
+                mtime_fixes, fix_unreachable_reason = self.fix_mtimes(bucket, verify_result.get_objects(S3VerifyOutcome.mtime_differs), mtime_fix_temp_dir)
+        bucket_verification = self.verification_out(bucket.name, verify_result, watch, mtime_fixes)
+        bucket_verification.unreachable = bucket_verification.unreachable or fix_unreachable_reason is not None
+        return bucket_verification
 
+    def verification_out(self, bucket_name: str, verify_result: S3VerifyResult, watch: VerifyWatch, mtime_fixes: Optional[Dict[str, MtimeFix]]) -> BucketVerification:
+        """
+        Report what the verification of a bucket found, and what the fix of its modification times did:
+
+        - a file that is not a copy of its S3 object is an error, whether the verification or the fix found that,
+        - a file that could not be verified is an error, and so is one whose modification time could not be fixed,
+        - a file that has the contents of its S3 object but another modification time is a warning, unless the fix got to it (it is
+          then fixed, or one of the errors above),
+        - the files that were not verified because S3 could no longer be reached are one error,
+        - and a result line, with a second one for the fix if there were modification times to fix.
+
+        :param bucket_name: the bucket
+        :param verify_result: the result of awsimple's verification
+        :param watch: the watch of that verification
+        :param mtime_fixes: the outcome of every file the fix of modification times got to, by S3 key (None if they are not fixed)
+        :return: what the verification found
+        """
+        fixes = list((mtime_fixes or {}).values())
+        fix_differ = [fix for fix in fixes if fix.outcome == MtimeFixOutcome.differs]  # found not to be a copy by the fix
+        fix_failed = [fix for fix in fixes if fix.outcome == MtimeFixOutcome.failed]
+        fixed = [fix for fix in fixes if fix.outcome == MtimeFixOutcome.fixed]
         differ = verify_result.get_objects(S3VerifyOutcome.differs)
-        self.lines_out(
-            self.error_out,
-            [f'{bucket.name} : "{differs.key}" is not a copy of the S3 object : {differs.reason}' for differs in [*differ, *fix_differ]],
-            f"{bucket.name} : {{}} more local files are not a copy of their S3 object",
-        )
         # the files that failed because S3 could not be reached are one error (below), and the others are an error each
         failed = [verify_object for verify_object in verify_result.get_objects(S3VerifyOutcome.failed) if verify_object.key not in watch.unreachable_keys]
-        self.lines_out(
-            self.error_out,
-            [f'{bucket.name} : "{verify_object.key}" could not be verified : {verify_object.reason}' for verify_object in failed],
-            f"{bucket.name} : {{}} more local files could not be verified",
-        )
-        self.lines_out(
-            self.error_out,
-            [f'{bucket.name} : "{fix.key}" : the modification time could not be fixed : {fix.reason}' for fix in fix_failed],
-            f"{bucket.name} : {{}} more modification times could not be fixed",
-        )
-        # the files the fix got to are either fixed or an error (above)
-        self.lines_out(
-            self.warning_out,
-            [f'{bucket.name} : "{verify_object.key}" has the contents of the S3 object, but {verify_object.reason}' for verify_object in mtime_differs if verify_object.key not in mtime_fixes],
-            f"{bucket.name} : {{}} more local files have a modification time that is not their S3 object's",
-        )
+        mtime_differs = verify_result.get_objects(S3VerifyOutcome.mtime_differs)
+        mtime_not_fixed = [verify_object for verify_object in mtime_differs if verify_object.key not in (mtime_fixes or {})]  # the fix did not get to these
+
+        self.files_out(self.error_out, bucket_name, [*differ, *fix_differ], "is not a copy of the S3 object : ", "local files are not a copy of their S3 object")
+        self.files_out(self.error_out, bucket_name, failed, "could not be verified : ", "local files could not be verified")
+        self.files_out(self.error_out, bucket_name, fix_failed, ": the modification time could not be fixed : ", "modification times could not be fixed")
+        self.files_out(self.warning_out, bucket_name, mtime_not_fixed, "has the contents of the S3 object, but ", "local files have a modification time that is not their S3 object's")
+
         same_contents = verify_result.get_objects(S3VerifyOutcome.verified) + mtime_differs
         no_hash_count = sum(verify_object.hash_name is None for verify_object in same_contents)  # S3 has no hash of the whole contents of these
         verified_count = len(same_contents) + len(differ) + len(failed)
         not_verified_count = len(watch.unreachable_keys) + verify_result.get_count(S3VerifyOutcome.not_attempted)  # S3 could not be reached, or the verification was stopped
         if watch.unreachable_reason is not None:
             self.error_out(
-                f"{bucket.name} : S3 could not be reached during the verification, which ended there : {not_verified_count} of {verified_count + not_verified_count} files were not verified : "
+                f"{bucket_name} : S3 could not be reached during the verification, which ended there : {not_verified_count} of {verified_count + not_verified_count} files were not verified : "
                 f"{watch.unreachable_reason}"
             )
         could_not = f", {len(failed)} could not be verified" if failed else ""
         differ_count = len(differ) + len(fix_differ)
         self.info_out(
-            f"{bucket.name} : verified {verified_count} of {verified_count + not_verified_count} files against S3 : {differ_count} differ, "
+            f"{bucket_name} : verified {verified_count} of {verified_count + not_verified_count} files against S3 : {differ_count} differ, "
             f"{len(mtime_differs) - len(fix_differ)} have a different modification time, {no_hash_count} have no hash in S3 (size and modification time only){could_not}"
         )
-        if mtime_fix_temp_dir is not None and len(mtime_differs) > 0:
+        if mtime_fixes is not None and len(mtime_differs) > 0:
             downloaded_count = sum(fix.downloaded for fix in fixed)
             self.info_out(
-                f"{bucket.name} : fixed the modification time of {len(fixed)} of {len(mtime_differs)} files that have a different modification time "
+                f"{bucket_name} : fixed the modification time of {len(fixed)} of {len(mtime_differs)} files that have a different modification time "
                 f"({downloaded_count} after a download to compare, since S3 has no hash of them)"
             )
-        return BucketVerification(verified_count, differ_count, len(failed), watch.unreachable_reason is not None or fix_unreachable_reason is not None)
+        return BucketVerification(verified_count, differ_count, len(failed), watch.unreachable_reason is not None)
 
     def verify_backup(self, buckets: List[SyncedBucket]):
         """
@@ -537,8 +474,8 @@ class S3Backup(BupBase):
         preferences = get_preferences(self.ui_type)
         dry_run = preferences.dry_run
 
-        backup_directory = os.path.join(preferences.backup_directory, "s3")
-        os.makedirs(backup_directory, exist_ok=True)
+        backup_directory = get_backup_type_directory(preferences.backup_directory, self.backup_type)
+        backup_directory.mkdir(parents=True, exist_ok=True)
 
         try:
             s3_access = S3Access(**get_aws_access_kwargs(preferences))  # making the access raises if the AWS profile does not exist
@@ -548,29 +485,27 @@ class S3Backup(BupBase):
             self.error_out(f"could not list S3 buckets - check credentials and connectivity : {e}")
             return
         self.info_out(f"found {len(bucket_names)} buckets")
-        self.counts.found = len(bucket_names)
-        self.counts.excluded = 0
-        if not dry_run:  # a dry run backs up nothing
-            self.counts.backed_up = 0
+        self.start_counts(len(bucket_names), dry_run)
+        if not dry_run:  # a dry run syncs nothing
             self.counts.files_synced = 0
 
         count = 0  # buckets backed up, or dry run
         total_synced_count = 0  # objects downloaded (or that a sync would download, for a dry run)
         synced_buckets = []  # the buckets to verify against S3 once every bucket is backed up
-        exclusions = ExclusionPreferences(BackupTypes.S3.name).get_no_comments()
+        exclusions = ExclusionPreferences(self.backup_type.name).get_no_comments()
         for bucket_name in bucket_names:
             if self.stop_requested:
                 break
 
             if bucket_name in exclusions:
                 self.info_out(f"excluding {bucket_name}")
-                self.counts.excluded += 1
+                self.count_excluded()
                 continue
 
             self.info_out(f"dry run {bucket_name}" if dry_run else f"{bucket_name}")
 
             destination = Path(backup_directory, bucket_name)
-            os.makedirs(destination, exist_ok=True)
+            destination.mkdir(parents=True, exist_ok=True)
             if (bucket := self.sync_bucket(preferences, s3_access, bucket_name, destination)) is None:
                 continue  # don't count or check a sync that could not be done
 

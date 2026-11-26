@@ -1,3 +1,9 @@
+"""
+The graphical user interface of bup: the main window (BupDialog) and a widget per tab.
+
+The order of the imports below matters: a widget imports what it needs from this package, which has to be here already.
+"""
+
 from .preferences_widget import PreferencesWidget, get_gui_preferences
 from .about import BupAbout
 from .gui_icon import get_icon_path

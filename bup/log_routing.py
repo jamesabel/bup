@@ -35,6 +35,8 @@ log_sources_by_backup_type = {
 # (all of bup logs to the same application logger)
 log_sources_by_filename = {
     "s3_backup.py": LogSources.s3,
+    "s3_verify.py": LogSources.s3,
+    "s3_mtime_fix.py": LogSources.s3,
     "aws_cli.py": LogSources.s3,
     "dynamodb_backup.py": LogSources.dynamodb,
     "github_backup.py": LogSources.github,
@@ -65,6 +67,10 @@ class DetailedFileLogHandler(logging.Handler):
     """
 
     def __init__(self, directory: Union[str, Path], max_bytes: int = default_file_size_limit_mb * bytes_per_mb):
+        """
+        :param directory: the directory of the log files (made when there is something to write)
+        :param max_bytes: the size at which a log file is rotated
+        """
         super().__init__()
         self.directory = Path(directory)
         self.max_bytes = max_bytes
@@ -90,6 +96,9 @@ class DetailedFileLogHandler(logging.Handler):
         log_file_path.rename(rotated_path)
 
     def emit(self, record: logging.LogRecord):
+        """
+        Write a log record to the file of its log source (called by logging, for every record).
+        """
         log_source = get_log_source(record)
         try:
             file = self.files.get(log_source)
@@ -106,6 +115,9 @@ class DetailedFileLogHandler(logging.Handler):
             self.handleError(record)
 
     def close(self):
+        """
+        Close every log file (called by logging when the handler is removed for good).
+        """
         self.acquire()
         try:
             for file in self.files.values():

@@ -4,6 +4,7 @@ The GUI's "About" tab.
 
 import platform
 from pathlib import Path
+from typing import Optional
 
 from PyQt5.QtWidgets import QVBoxLayout, QWidget, QTextBrowser
 from balsa import get_logger
@@ -12,6 +13,52 @@ from bup import __url__, __author_url__, __version__, __application_name__
 
 log = get_logger(__application_name__)
 
+license_file_name = "LICENSE"  # the license of bup
+gpl_license_file_name = "gpl-3.0.md"  # the text of the GPL, which is next to the license file
+
+
+def find_license_path(directory: Path) -> Optional[Path]:
+    """
+    :param directory: the directory the license file is in, at any depth
+    :return: the path of the license file, or None if there is none
+    """
+    return next((path for path in directory.rglob(license_file_name) if path.is_file()), None)
+
+
+def get_gpl_text(license_path: Path) -> str:
+    """
+    :param license_path: the path of the license file
+    :return: the text of the GPL, or where its file was looked for if it is not there
+    """
+    gpl_license_path = Path(license_path.parent, gpl_license_file_name)
+    if gpl_license_path.is_file():
+        return gpl_license_path.read_text()
+    return f'GPL license file not found at "{gpl_license_path.absolute()}"'
+
+
+def get_about_text() -> str:
+    """
+    :return: what the About tab shows, as Markdown: the versions of bup and of Python, the license, where bup comes from and the
+      GPL. Without the license file (it is installed with the bup package) it only says that the file was not found.
+    """
+    license_file_parent_dir = Path(__file__).parent.parent  # the bup package
+    license_path = find_license_path(license_file_parent_dir)
+    if license_path is None:
+        return f'License file not found at "{license_path}" ("{license_path}"), license_file_parent_dir="{license_file_parent_dir}".'
+    return "".join(
+        [
+            f"### BUP ({__version__})\n\n",
+            f"Python version: {platform.python_version()}\n\n",  # the Python this application is running on
+            license_path.read_text(),
+            "\n---\n",
+            f"\nsource code: [{__url__}]({__url__})\n",
+            f"\nauthor's web site: [{__author_url__}]({__author_url__})\n",
+            "\n---\n",
+            "\n---\n",
+            get_gpl_text(license_path),
+        ]
+    )
+
 
 class BupAbout(QWidget):
     """
@@ -19,45 +66,12 @@ class BupAbout(QWidget):
     """
 
     def __init__(self):
+        """
+        Make the tab, with its text (see get_about_text()).
+        """
         super().__init__()
         self.setLayout(QVBoxLayout())
-
-        # locate the license files
-        license_file_name = "LICENSE"
-        gpl_license_file_name = "gpl-3.0.md"
-
-        license_file_parent_dir = Path(__file__).parent.parent
-        license_path = next((p for p in license_file_parent_dir.rglob(license_file_name) if p.is_file()), None)
-        if license_path is not None:
-            gpl_license_path = Path(license_path.parent, gpl_license_file_name)
-            gpl_text = gpl_license_path.read_text() if gpl_license_path.exists() and gpl_license_path.is_file() else f'GPL license file not found at "{gpl_license_path.absolute()}"'
-        else:
-            gpl_text = ""
-
-        if license_path is not None and license_path.exists() and license_path.is_file():
-            about_text = f"### BUP ({__version__})\n\n"
-            about_text += f"Python version: {platform.python_version()}\n\n"  # the Python this application is running on
-            about_text += license_path.read_text()
-            about_text += "\n---\n"
-            about_text += f"\nsource code: [{__url__}]({__url__})\n"
-            about_text += f"\nauthor's web site: [{__author_url__}]({__author_url__})\n"
-            about_text += "\n---\n"
-            about_text += "\n---\n"
-            about_text += gpl_text
-
-            self.about_text_widget = QTextBrowser()
-            self.about_text_widget.setOpenExternalLinks(True)
-            self.about_text_widget.setMarkdown(about_text)
-            self.layout().addWidget(self.about_text_widget)
-
-        else:
-            if license_path is None:
-                absolute_license_path = None
-            else:
-                absolute_license_path = license_path.absolute()
-
-            error_message = f'License file not found at "{license_path}" ("{absolute_license_path}"), license_file_parent_dir="{license_file_parent_dir}".'
-            # log.info(error_message)  # not fatal
-            self.about_text_widget = QTextBrowser()
-            self.about_text_widget.setMarkdown(error_message)
-            self.layout().addWidget(self.about_text_widget)
+        self.about_text_widget = QTextBrowser()
+        self.about_text_widget.setOpenExternalLinks(True)
+        self.about_text_widget.setMarkdown(get_about_text())
+        self.layout().addWidget(self.about_text_widget)

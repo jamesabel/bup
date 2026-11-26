@@ -36,11 +36,17 @@ class QtLogHandler(logging.Handler):
     """
 
     def __init__(self):
+        """
+        Make the handler, whose emitter.log_line_signal is what to connect to.
+        """
         super().__init__()
         self.emitter = QtLogEmitter()
         self.setFormatter(logging.Formatter(log_line_format))
 
     def emit(self, record: logging.LogRecord):
+        """
+        Send a log record on its way to the GUI thread (called by logging, in the thread that logged the record).
+        """
         self.emitter.log_line_signal.emit(get_log_source(record).value, self.format(record))
 
 
@@ -50,6 +56,9 @@ class LogPane(QGroupBox):
     """
 
     def __init__(self, name: str):
+        """
+        :param name: the title of the pane
+        """
         super().__init__(name)
         self.setLayout(QVBoxLayout())
         self.text_box = QPlainTextEdit()
@@ -67,6 +76,9 @@ class LogWidget(QWidget):
     """
 
     def __init__(self):
+        """
+        Make the tab with its panes, at the heights they had when bup was last closed, and start capturing log records.
+        """
         super().__init__()
         self.setLayout(QVBoxLayout())
 

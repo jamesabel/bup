@@ -140,6 +140,26 @@ class BupBase(QThread):
         """
         raise NotImplementedError
 
+    def start_counts(self, found: int, dry_run: bool):
+        """
+        Start the counts of this run (see BackupCounts), once the derived class knows what there is to back up: its buckets, tables
+        or repositories. None is excluded yet. None is backed up yet either, and for a dry run, which backs up nothing, that count
+        stays unset.
+
+        :param found: how many buckets, tables or repositories there are
+        :param dry_run: True if this run is a dry run
+        """
+        self.counts.found = found
+        self.counts.excluded = 0
+        if not dry_run:
+            self.counts.backed_up = 0
+
+    def count_excluded(self):
+        """
+        Count a bucket, table or repository that is not backed up because it is in the exclusion list.
+        """
+        self.counts.excluded = (self.counts.excluded or 0) + 1
+
     def request_stop(self):
         """
         Ask the backup to stop. It stops at the next point where it checks, so it may still be running for a while.
@@ -148,6 +168,9 @@ class BupBase(QThread):
 
     @property
     def stop_requested(self) -> bool:
+        """
+        :return: True if the backup has been asked to stop (see request_stop())
+        """
         return self.stop_event.is_set()
 
     def _out(self, signal: pyqtBoundSignal, deliver: Callable[[str], None], s: str):
@@ -195,19 +218,30 @@ class BupBase(QThread):
                 self.error_messages.append(s)
 
     def _log_extra(self) -> dict:
-        # stamp the record with this engine's backup type so the GUI log tab can route it to the right pane
-        # (the record's own source location is this file, not the backup module the message came from)
+        """
+        :return: what a log record of this backup is stamped with: its backup type, so that the record goes to the pane and the
+          detailed log file of the backup type (the record's own source location is this file, not the module of the backup)
+        """
         return {"backup_type": self.backup_type}
 
     def _info_out(self, s: str):
+        """
+        Deliver a line of regular output: log it and give it to the caller. In the GUI this runs in the GUI thread (see _out()).
+        """
         log.info(s, extra=self._log_extra())
         self.caller_info_out(s)
 
     def _warning_out(self, s: str):
+        """
+        Deliver a warning: log it and give it to the caller. In the GUI this runs in the GUI thread (see _out()).
+        """
         log.warning(s, extra=self._log_extra())
         self.caller_warning_out(s)
 
     def _error_out(self, s: str):
+        """
+        Deliver an error: log it and give it to the caller. In the GUI this runs in the GUI thread (see _out()).
+        """
         log.error(s, extra=self._log_extra())
         self.caller_error_out(s)
 
@@ -227,6 +261,9 @@ class BupBase(QThread):
         self._transfer_text_out(str(get_transfer_total(self.backup_type, self.transfer_records)))
 
     def _transfer_text_out(self, s: str):
+        """
+        Report a line about what was transferred, where the UI shows that.
+        """
         if self.ui_type == UITypes.cli:
             # the CLI has no Transfer tab, so the transfer report is part of its regular output
             self._info_out(s)

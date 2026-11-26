@@ -39,11 +39,18 @@ class PreferencesLineEdit(QLineEdit):
             self.textChanged.connect(self.save)
 
     def setText(self, a0: Optional[str]):
-        # tolerate None (a0 is the name PyQt5 gives this parameter of QLineEdit.setText)
+        """
+        Show a text. None (a preference that is not set) leaves what is shown as it is.
+
+        :param a0: the text (the name is the one PyQt5 gives this parameter of QLineEdit.setText)
+        """
         if a0 is not None:
             super().setText(a0)
 
     def text(self):
+        """
+        :return: the text, without the whitespace around it
+        """
         return super().text().strip()
 
     def load(self, preferences):
@@ -102,6 +109,9 @@ class ShowButton(QPushButton):
         self.clicked.connect(self.toggle)
 
     def toggle(self):
+        """
+        Show what is typed if it is hidden, and hide it if it is shown. The text of the button is what a click does next.
+        """
         if self.line_edit.echoMode() == QLineEdit.Password:
             self.setText("Hide")
             self.line_edit.setEchoMode(QLineEdit.Normal)
@@ -117,6 +127,9 @@ class PreferencesWidget(QWidget):
     """
 
     def __init__(self):
+        """
+        Make the tab, showing the preferences as they are saved.
+        """
         super().__init__()
         layout = QVBoxLayout()
         self.setLayout(layout)
@@ -251,16 +264,25 @@ class PreferencesWidget(QWidget):
             self.automatic_backup_period.setValue(preferences.backup_period)
 
     def select_backup_directory(self):
+        """
+        Let the user pick the backup directory in a dialog (nothing changes if the dialog is cancelled).
+        """
         new_backup_directory = QFileDialog.getExistingDirectory(self, "Select Backup Directory")
         if new_backup_directory is not None and len(new_backup_directory) > 0:
             self.backup_directory_line_edit.setText(new_backup_directory)
 
     def select_detailed_log_directory(self):
+        """
+        Let the user pick the detailed log directory in a dialog (nothing changes if the dialog is cancelled).
+        """
         new_detailed_log_directory = QFileDialog.getExistingDirectory(self, "Select Detailed Log Directory")
         if new_detailed_log_directory is not None and len(new_detailed_log_directory) > 0:
             self.detailed_log_directory_line_edit.setText(new_detailed_log_directory)
 
     def detailed_log_file_size_limit_changed(self):
+        """
+        Save the file size limit of the detailed logs, and apply it a moment later (see apply_detailed_log_directory()).
+        """
         get_gui_preferences().detailed_log_file_size_limit_mb = self.detailed_log_file_size_limit.value()  # QSpinBox guarantees an int
         self.detailed_log_apply_timer.start()
 
@@ -271,6 +293,10 @@ class PreferencesWidget(QWidget):
         set_detailed_file_logging(self.detailed_log_directory_line_edit.text(), self.detailed_log_file_size_limit.value())
 
     def automatic_backup_changed(self):
+        """
+        Save whether the automatic backup is enabled and its period, which the main window reads every second (see
+        BupDialog.autobackup_tick()).
+        """
         preferences = get_gui_preferences()
         preferences.automatic_backup = self.automatic_backup_enable_check_box.isChecked()
         preferences.backup_period = self.automatic_backup_period.value()  # QSpinBox guarantees an int

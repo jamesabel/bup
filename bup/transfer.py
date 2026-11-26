@@ -134,6 +134,10 @@ class TransferRecord:
     requests: int = 0  # the S3 requests made that AWS charges for (S3 only)
 
     def __str__(self):
+        """
+        :return: the record as a line of text, e.g. "my-bucket : received 1.2 GB, 1310 S3 requests, approximately $0.1569 before any AWS
+          free allowance". What a record does not have (requests, read units, a cost) is left out.
+        """
         s = f"{self.name} : received {format_size(self.received_bytes)}"
         if self.requests > 0:
             s += f", {self.requests} S3 requests"

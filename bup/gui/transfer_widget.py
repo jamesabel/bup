@@ -6,12 +6,12 @@ import sqlite3
 from datetime import datetime
 from typing import Dict, List, Tuple
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QGroupBox, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QGroupBox, QLabel, QPushButton
 from balsa import get_logger
 
 from bup import BackupTypes, __application_name__
 from bup.aws_prices import AWSPrices, get_cached_aws_prices, s3_standard_storage_class
-from bup.gui.gui_util import get_local_time_string, make_row
+from bup.gui.gui_util import get_local_time_string, make_row, make_table, set_table_row
 from bup.transfer import TransferRecord, transfer_emitter, get_transfer_total, format_size, format_cost
 
 log = get_logger(__application_name__)
@@ -96,6 +96,9 @@ class TransferWidget(QWidget):
     """
 
     def __init__(self):
+        """
+        Make the tab, which from then on shows every transfer that a backup reports.
+        """
         super().__init__()
         self.setLayout(QVBoxLayout())
 
@@ -132,10 +135,7 @@ class TransferWidget(QWidget):
         self.controls_widget = make_row(self.clear_button)
         self.layout().addWidget(self.controls_widget)
         # every column is as wide as its contents, and an empty spacer column on the far right takes up the remaining width
-        self.table = QTableWidget(0, len(columns) + 1)
-        self.table.setHorizontalHeaderLabels(columns + [""])
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table = make_table(columns + [""])
         self.table.horizontalHeader().setStretchLastSection(True)
         self.layout().addWidget(self.table)
 
@@ -167,8 +167,7 @@ class TransferWidget(QWidget):
         row = next((row for row, row_record in enumerate(self.row_records) if get_cost_rank(row_record) <= new_row_rank), len(self.row_records))
         self.row_records.insert(row, transfer_record)
         self.table.insertRow(row)
-        for column, text in enumerate(row_text):
-            self.table.setItem(row, column, QTableWidgetItem(text))
+        set_table_row(self.table, row, row_text)
         if self.table.rowCount() > max_transfer_rows:
             # drop the bottom (lowest cost) row - the totals still include it
             self.row_records.pop()

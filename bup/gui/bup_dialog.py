@@ -5,6 +5,7 @@ The main window of the GUI: a dialog with a tab per function and a status line, 
 from datetime import datetime, timedelta
 import ctypes
 import os
+from typing import Optional
 
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTabWidget, QMessageBox, QLabel
 from PyQt5.QtGui import QCloseEvent, QIcon
@@ -24,6 +25,9 @@ class BupDialog(QDialog):
     """
 
     def __init__(self):
+        """
+        Make the main window with its tabs, as it was when bup was last closed, and start the timer of the automatic backup.
+        """
         super().__init__()
 
         self.setWindowIcon(QIcon(str(get_icon_path("png"))))
@@ -79,42 +83,43 @@ class BupDialog(QDialog):
     def autobackup_tick(self):
         """
         Called once a second: show when the next automatic backup is (or that a backup is running), and start it when it is due.
-        A backup is due when the backup period has passed since the most recent backup ended (completed or stopped by the user), or
-        right away if there has not been one.
         """
         if self.preferences_widget.automatic_backup_enable_check_box.isChecked():
-            backup_period = self.preferences_widget.automatic_backup_period.value()  # QSpinBox guarantees an int
-            if backup_period <= 0:
-                self.run_backup_widget.countdown_text.setText("(automatic backup not set)")
-            else:
-                now = datetime.now()
-                backup_period_time_delta = timedelta(hours=backup_period)
-                if self.run_backup_widget.most_recent_backup is None:
-                    # no backup on record - start one right away
-                    if not self.run_backup_widget.run_all.isRunning():
-                        if self.run_backup_widget.start():
-                            self.run_backup_widget.countdown_text.setText("(starting first automatic backup)")
-                        else:
-                            self.run_backup_widget.countdown_text.setText("(backup directory not set)")
-                else:
-                    most_recent_backup = datetime.fromtimestamp(self.run_backup_widget.most_recent_backup)
-                    next_backup_date_time = most_recent_backup + backup_period_time_delta
-                    next_backup_time_delta = next_backup_date_time - now
-                    next_backup_time_delta_second_granularity = timedelta(days=next_backup_time_delta.days, seconds=next_backup_time_delta.seconds)  # don't display fractions of a second
-                    self.run_backup_widget.countdown_text.setText(f"{next_backup_date_time.strftime('%m-%d-%Y %H:%M:%S')} (in {str(next_backup_time_delta_second_granularity)})")
-                    if next_backup_time_delta.total_seconds() <= 0.0 and not self.run_backup_widget.run_all.isRunning():
-                        # timer is up - start the backup
-                        if not self.run_backup_widget.start():
-                            self.run_backup_widget.countdown_text.setText("(backup directory not set)")
-
-            if self.run_backup_widget.run_all.isRunning():
-                ticks = "." * (self.tick_count % 4)
+            countdown_text = self.start_backup_if_due()
+            if self.run_backup_widget.run_all.isRunning() or countdown_text is None:
                 # a backup that was asked to stop is still running until it gets to where it stops - say that it is on its way out
                 activity = "stopping" if self.run_backup_widget.run_all.stop_requested else "running"
-                self.run_backup_widget.countdown_text.setText(f"{activity} {ticks}")
+                countdown_text = f"{activity} {'.' * (self.tick_count % 4)}"
         else:
-            self.run_backup_widget.countdown_text.setText("(automatic backup not enabled)")
+            countdown_text = "(automatic backup not enabled)"
+        self.run_backup_widget.countdown_text.setText(countdown_text)
         self.tick_count += 1
+
+    def start_backup_if_due(self) -> Optional[str]:
+        """
+        Start the automatic backup if it is due and no backup is running. A backup is due when the backup period has passed since the
+        most recent backup ended (completed or stopped by the user), or right away if there has not been one.
+
+        :return: what to show as the next backup while no backup is running: when it is, or why there is none. None if there has
+          not been a backup and one is running, which is all there is to show.
+        """
+        run_backup_widget = self.run_backup_widget
+        backup_period = self.preferences_widget.automatic_backup_period.value()  # hours (QSpinBox guarantees an int)
+        if backup_period <= 0:
+            return "(automatic backup not set)"
+
+        if run_backup_widget.most_recent_backup is None:
+            # no backup on record - start one right away
+            if run_backup_widget.run_all.isRunning():
+                return None
+            return "(starting first automatic backup)" if run_backup_widget.start() else "(backup directory not set)"
+
+        next_backup = datetime.fromtimestamp(run_backup_widget.most_recent_backup) + timedelta(hours=backup_period)
+        time_left = next_backup - datetime.now()
+        if time_left.total_seconds() <= 0.0 and not run_backup_widget.run_all.isRunning() and not run_backup_widget.start():
+            return "(backup directory not set)"  # the timer is up, but the backup can not be started
+        time_left_to_the_second = timedelta(days=time_left.days, seconds=time_left.seconds)  # don't display fractions of a second
+        return f"{next_backup.strftime('%m-%d-%Y %H:%M:%S')} (in {time_left_to_the_second})"
 
     def closeEvent(self, a0: QCloseEvent) -> None:
         """
