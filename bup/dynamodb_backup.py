@@ -33,6 +33,9 @@ class DynamoDBScanMeter:
     scan_operation = "dynamodb.Scan"
 
     def __init__(self):
+        """
+        Nothing is measured until attach().
+        """
         self.response_bytes = 0  # the size of the scan responses so far
         self.read_units = 0.0  # the read units the scans have consumed so far
 
