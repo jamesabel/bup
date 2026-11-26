@@ -35,6 +35,8 @@ log_sources_by_backup_type = {
 # (all of bup logs to the same application logger)
 log_sources_by_filename = {
     "s3_backup.py": LogSources.s3,
+    "s3_verify.py": LogSources.s3,
+    "s3_mtime_fix.py": LogSources.s3,
     "aws_cli.py": LogSources.s3,
     "dynamodb_backup.py": LogSources.dynamodb,
     "github_backup.py": LogSources.github,
