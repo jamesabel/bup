@@ -3,6 +3,7 @@ The command line interface of bup: runs the backups asked for on the command lin
 """
 
 import sys
+from typing import List
 
 from balsa import Balsa, get_logger
 
@@ -13,15 +14,33 @@ log = get_logger(__application_name__)
 
 
 def _console_info(s: str):
+    """
+    Print a line of regular output of a backup.
+    """
     print(s)
 
 
 def _console_warning(s: str):
+    """
+    Print a warning of a backup.
+    """
     print(f"WARNING: {s}")
 
 
 def _console_error(s: str):
+    """
+    Print an error of a backup.
+    """
     print(f"ERROR: {s}")
+
+
+def get_selected_backup_types(args) -> List[BackupTypes]:
+    """
+    :param args: the parsed command line (see arguments())
+    :return: the backup types the command line asks for, in the order of BackupTypes (--aws is both S3 and DynamoDB)
+    """
+    selected = {BackupTypes.S3: args.s3 or args.aws, BackupTypes.DynamoDB: args.dynamodb or args.aws, BackupTypes.github: args.github}
+    return [backup_type for backup_type in BackupTypes if selected[backup_type]]
 
 
 def cli_main(args):
@@ -56,23 +75,16 @@ def cli_main(args):
     preferences.s3_verify = args.verify
     preferences.s3_fix_mtime = args.fix_mtime
 
+    backup_types = get_selected_backup_types(args)
+
     # Set the exclusions for the selected backup type(s).  The values are stored for subsequent runs.
     # An explicitly empty -e (no values) clears the stored exclusions.
     if args.exclude is not None:
-        if args.s3 or args.aws:
-            ExclusionPreferences(BackupTypes.S3.name).set(args.exclude)
-        if args.dynamodb or args.aws:
-            ExclusionPreferences(BackupTypes.DynamoDB.name).set(args.exclude)
-        if args.github:
-            ExclusionPreferences(BackupTypes.github.name).set(args.exclude)
+        for backup_type in backup_types:
+            ExclusionPreferences(backup_type.name).set(args.exclude)
 
-    backups = []
-    if args.s3 or args.aws:
-        backups.append(S3Backup(ui_type, _console_info, _console_warning, _console_error))
-    if args.dynamodb or args.aws:
-        backups.append(DynamoDBBackup(ui_type, _console_info, _console_warning, _console_error))
-    if args.github:
-        backups.append(GithubBackup(ui_type, _console_info, _console_warning, _console_error))
+    backup_classes = {BackupTypes.S3: S3Backup, BackupTypes.DynamoDB: DynamoDBBackup, BackupTypes.github: GithubBackup}
+    backups = [backup_classes[backup_type](ui_type, _console_info, _console_warning, _console_error) for backup_type in backup_types]
 
     if len(backups) == 0:
         print("nothing to do - please specify a backup to do or -h/--help for help")

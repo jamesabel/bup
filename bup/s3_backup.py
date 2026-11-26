@@ -18,6 +18,7 @@ from balsa import get_logger
 
 from bup import __application_name__, BupBase, BackupTypes, get_preferences, ExclusionPreferences
 from bup.aws_access import get_aws_access_kwargs
+from bup.backup_types import get_backup_type_directory
 from bup.s3_mtime_fix import MtimeFix, MtimeFixOutcome, fix_local_mtime, remove_temp_dir, temp_dir_name
 from bup.transfer import TransferRecord, get_charged_request_count, get_s3_cost
 from bup.aws_prices import get_aws_prices
@@ -537,8 +538,8 @@ class S3Backup(BupBase):
         preferences = get_preferences(self.ui_type)
         dry_run = preferences.dry_run
 
-        backup_directory = os.path.join(preferences.backup_directory, "s3")
-        os.makedirs(backup_directory, exist_ok=True)
+        backup_directory = get_backup_type_directory(preferences.backup_directory, self.backup_type)
+        backup_directory.mkdir(parents=True, exist_ok=True)
 
         try:
             s3_access = S3Access(**get_aws_access_kwargs(preferences))  # making the access raises if the AWS profile does not exist
@@ -548,29 +549,27 @@ class S3Backup(BupBase):
             self.error_out(f"could not list S3 buckets - check credentials and connectivity : {e}")
             return
         self.info_out(f"found {len(bucket_names)} buckets")
-        self.counts.found = len(bucket_names)
-        self.counts.excluded = 0
-        if not dry_run:  # a dry run backs up nothing
-            self.counts.backed_up = 0
+        self.start_counts(len(bucket_names), dry_run)
+        if not dry_run:  # a dry run syncs nothing
             self.counts.files_synced = 0
 
         count = 0  # buckets backed up, or dry run
         total_synced_count = 0  # objects downloaded (or that a sync would download, for a dry run)
         synced_buckets = []  # the buckets to verify against S3 once every bucket is backed up
-        exclusions = ExclusionPreferences(BackupTypes.S3.name).get_no_comments()
+        exclusions = ExclusionPreferences(self.backup_type.name).get_no_comments()
         for bucket_name in bucket_names:
             if self.stop_requested:
                 break
 
             if bucket_name in exclusions:
                 self.info_out(f"excluding {bucket_name}")
-                self.counts.excluded += 1
+                self.count_excluded()
                 continue
 
             self.info_out(f"dry run {bucket_name}" if dry_run else f"{bucket_name}")
 
             destination = Path(backup_directory, bucket_name)
-            os.makedirs(destination, exist_ok=True)
+            destination.mkdir(parents=True, exist_ok=True)
             if (bucket := self.sync_bucket(preferences, s3_access, bucket_name, destination)) is None:
                 continue  # don't count or check a sync that could not be done
 

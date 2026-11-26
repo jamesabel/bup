@@ -13,6 +13,7 @@ from awsimple import DynamoDBAccess, dynamodb_to_json
 from balsa import get_logger
 
 from bup import BupBase, BackupTypes, get_preferences, ExclusionPreferences, __application_name__
+from bup.backup_types import get_backup_type_directory
 from bup.aws_access import get_aws_access_kwargs
 from bup.transfer import TransferRecord, get_dynamodb_scan_cost
 from bup.aws_prices import get_aws_prices
@@ -32,8 +33,8 @@ class DynamoDBScanMeter:
     scan_operation = "dynamodb.Scan"
 
     def __init__(self):
-        self.response_bytes = 0
-        self.read_units = 0.0
+        self.response_bytes = 0  # the size of the scan responses so far
+        self.read_units = 0.0  # the read units the scans have consumed so far
 
     def attach(self, client):
         """
@@ -115,7 +116,7 @@ class DynamoDBBackup(BupBase):
         if (table_contents := self.scan_table(preferences, table_name)) is None:
             return False
         try:
-            write_table_files(Path(preferences.backup_directory, "dynamodb"), table_name, table_contents)
+            write_table_files(get_backup_type_directory(preferences.backup_directory, self.backup_type), table_name, table_contents)
         except OSError as e:
             self.error_out(f"could not write backup files for {table_name} : {e}")
             return False
@@ -137,10 +138,7 @@ class DynamoDBBackup(BupBase):
             self.error_out(f"could not list DynamoDB tables - check credentials and connectivity : {e}")
             return
         self.info_out(f"found {len(tables)} DynamoDB tables")
-        self.counts.found = len(tables)
-        self.counts.excluded = 0
-        if not dry_run:  # a dry run backs up nothing
-            self.counts.backed_up = 0
+        self.start_counts(len(tables), dry_run)
 
         count = 0
         for table_name in tables:
@@ -149,7 +147,7 @@ class DynamoDBBackup(BupBase):
 
             if table_name in exclusions:
                 self.info_out(f"excluding {table_name}")
-                self.counts.excluded += 1
+                self.count_excluded()
             elif dry_run:
                 self.info_out(f"dry run {table_name}")
             else:

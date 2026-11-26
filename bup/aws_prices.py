@@ -11,7 +11,6 @@ import sqlite3
 import threading
 import time
 import urllib.request
-from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -20,6 +19,7 @@ import appdirs
 from balsa import get_logger
 
 from bup import __application_name__, __author__
+from bup.sqlite_store import SQLiteStore
 
 log = get_logger(__application_name__)
 
@@ -238,18 +238,17 @@ def make_aws_prices(row: tuple) -> AWSPrices:
     return AWSPrices(*values, json.loads(s3_tier2_request_prices_json), json.loads(s3_retrieval_prices_json))
 
 
-class AWSPriceCache:
+class AWSPriceCache(SQLiteStore):
     """
-    The fetched prices of each region, in a SQLite database. Each call opens its own connection, so this can be used from any thread.
+    The fetched prices of each region, in a SQLite database (see SQLiteStore: it can be used from any thread).
     """
 
     def __init__(self, path: Path):
         """
         :param path: the path of the database (made, with its directory, if it does not exist)
         """
-        self.path = path
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with closing(self._connect()) as connection, connection:
+        super().__init__(path)
+        with self.transaction() as connection:
             # A table without all the prices is of an earlier bup (0.18.0 and before had no S3 request prices, and 0.19.0 no S3
             # retrieval fees). This is a cache, so it is made again and its prices are fetched again.
             existing_column_names = [column[1] for column in connection.execute("PRAGMA table_info(aws_prices)")]
@@ -261,14 +260,11 @@ class AWSPriceCache:
                 "s3_tier1_request_price_per_thousand REAL NOT NULL, s3_tier2_request_prices_per_thousand TEXT NOT NULL, s3_retrieval_prices_per_gb TEXT NOT NULL)"
             )
 
-    def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.path)
-
     def get(self, region: str) -> Optional[AWSPrices]:
         """
         :return: the cached prices of a region, or None if there are none
         """
-        with closing(self._connect()) as connection:
+        with self.connection() as connection:
             row = connection.execute(f"SELECT {price_cache_columns} FROM aws_prices WHERE region = ?", (region,)).fetchone()
         return None if row is None else make_aws_prices(row)
 
@@ -276,7 +272,7 @@ class AWSPriceCache:
         """
         :return: the cached prices of every region, in order of region name
         """
-        with closing(self._connect()) as connection:
+        with self.connection() as connection:
             rows = connection.execute(f"SELECT {price_cache_columns} FROM aws_prices ORDER BY region").fetchall()
         return [make_aws_prices(row) for row in rows]
 
@@ -284,7 +280,7 @@ class AWSPriceCache:
         """
         Cache the prices of a region, in place of the ones cached for it before.
         """
-        with closing(self._connect()) as connection, connection:
+        with self.transaction() as connection:
             connection.execute(
                 f"INSERT OR REPLACE INTO aws_prices ({price_cache_columns}) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (

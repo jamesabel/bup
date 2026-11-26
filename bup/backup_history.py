@@ -13,7 +13,6 @@ import json
 import os
 import sqlite3
 import time
-from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -27,6 +26,7 @@ from PyQt5.QtCore import QObject, pyqtSignal
 
 from bup import __application_name__, __author__
 from bup.backup_types import BackupTypes
+from bup.sqlite_store import SQLiteStore
 from bup.transfer import TransferRecord
 from bup.ui_types import UITypes
 
@@ -110,6 +110,10 @@ history_columns = "id, backup_type, ui_type, pid, process_start, started, ended,
 
 
 def _to_backup_run(row: tuple) -> BackupRun:
+    """
+    :param row: a row of the history table (its history_columns)
+    :return: the backup run of the row
+    """
     run_id, backup_type, ui_type, pid, process_start, started, ended, status, received_bytes, read_units, cost, error_count, warning_count, errors, *counts = row
     return BackupRun(
         run_id,
@@ -150,18 +154,17 @@ def is_process_running(pid: int, process_start: float) -> bool:
         return False
 
 
-class BackupHistory:
+class BackupHistory(SQLiteStore):
     """
-    The backup runs, in a SQLite database. Each call opens its own connection, so this can be used from any thread.
+    The backup runs, in a SQLite database (see SQLiteStore: it can be used from any thread).
     """
 
     def __init__(self, path: Path):
         """
         :param path: the path of the database (made, with its directory, if it does not exist)
         """
-        self.path = path
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with closing(self._connect()) as connection, connection:
+        super().__init__(path)
+        with self.transaction() as connection:
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS backup_runs ("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, backup_type TEXT, ui_type TEXT NOT NULL, pid INTEGER NOT NULL, process_start REAL NOT NULL, "
@@ -175,9 +178,6 @@ class BackupHistory:
                 connection.execute("BEGIN IMMEDIATE")
                 for column in self._get_missing_columns(connection):
                     connection.execute(f"ALTER TABLE backup_runs ADD COLUMN {column} INTEGER")
-
-    def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.path)
 
     @staticmethod
     def _get_missing_columns(connection: sqlite3.Connection) -> List[str]:
@@ -197,7 +197,7 @@ class BackupHistory:
         :return: the id of the run, to update() it with
         """
         pid = os.getpid()
-        with closing(self._connect()) as connection, connection:
+        with self.transaction() as connection:
             cursor = connection.execute(
                 "INSERT INTO backup_runs (backup_type, ui_type, pid, process_start, started, status) VALUES (?, ?, ?, ?, ?, ?)",
                 (
@@ -238,7 +238,7 @@ class BackupHistory:
         :param counts: what it has counted, nothing if not given
         """
         counts = BackupCounts() if counts is None else counts
-        with closing(self._connect()) as connection, connection:
+        with self.transaction() as connection:
             connection.execute(
                 "UPDATE backup_runs SET status = ?, ended = ?, received_bytes = ?, read_units = ?, cost = ?, error_count = ?, warning_count = ?, errors = ?, "
                 + ", ".join(f"{column} = ?" for column in count_columns)
@@ -262,7 +262,7 @@ class BackupHistory:
         :param limit: the most runs to return
         :return: the most recent backup runs, the most recent first
         """
-        with closing(self._connect()) as connection:
+        with self.connection() as connection:
             rows = connection.execute(f"SELECT {history_columns} FROM backup_runs ORDER BY started DESC, id DESC LIMIT ?", (limit,)).fetchall()
         return [_to_backup_run(row) for row in rows]
 
@@ -273,7 +273,7 @@ class BackupHistory:
 
         :return: the runs that were marked, as they are now, the most recent first
         """
-        with closing(self._connect()) as connection, connection:
+        with self.transaction() as connection:
             rows = connection.execute(f"SELECT {history_columns} FROM backup_runs WHERE status = ? ORDER BY started DESC, id DESC", (BackupStatus.running.name,)).fetchall()
             interrupted_runs = [backup_run for backup_run in map(_to_backup_run, rows) if not is_process_running(backup_run.pid, backup_run.process_start)]
             connection.executemany("UPDATE backup_runs SET status = ? WHERE id = ?", [(BackupStatus.interrupted.name, backup_run.run_id) for backup_run in interrupted_runs])

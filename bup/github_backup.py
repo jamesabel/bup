@@ -19,6 +19,7 @@ from balsa import get_logger
 from typeguard import typechecked
 
 from bup import __application_name__, BupBase, BackupTypes, get_preferences, ExclusionPreferences, rmdir
+from bup.backup_types import get_backup_type_directory
 from bup.transfer import TransferRecord
 
 log = get_logger(__application_name__)
@@ -108,9 +109,12 @@ class GithubBackup(BupBase):
     backup_type = BackupTypes.github
 
     def __init__(self, *args, **kwargs):
+        """
+        The arguments are those of BupBase.
+        """
         super().__init__(*args, **kwargs)
-        self._github_token: Optional[str] = None
-        self._git_env: dict = {}
+        self._github_token: Optional[str] = None  # the token of the run, which redact() takes out of what is reported
+        self._git_env: dict = {}  # the environment git is run with, which is how it gets the token (see get_git_credential_environment())
 
     def redact(self, s: str) -> str:
         """
@@ -184,20 +188,17 @@ class GithubBackup(BupBase):
 
         preferences = get_preferences(self.ui_type)
         dry_run = preferences.dry_run
-        exclusions = ExclusionPreferences(BackupTypes.github.name).get_no_comments()
+        exclusions = ExclusionPreferences(self.backup_type.name).get_no_comments()
 
         self._github_token = preferences.github_token
         self._git_env = get_git_credential_environment(self._github_token)
 
-        backup_dir = Path(preferences.backup_directory, "github")
+        backup_dir = get_backup_type_directory(preferences.backup_directory, self.backup_type)
 
         if (repositories := self.get_repositories(preferences.github_token)) is None:
             return
 
-        self.counts.found = len(repositories)
-        self.counts.excluded = 0
-        if not dry_run:  # a dry run backs up nothing
-            self.counts.backed_up = 0
+        self.start_counts(len(repositories), dry_run)
 
         outcome_counts = {repo_outcome: 0 for repo_outcome in RepoOutcomes}
         for github_repo in repositories:
@@ -207,7 +208,7 @@ class GithubBackup(BupBase):
             repo_owner_and_name = str(github_repo)
             if is_excluded(repo_owner_and_name, exclusions):
                 self.info_out(f"{repo_owner_and_name} excluded")
-                self.counts.excluded += 1
+                self.count_excluded()
             elif dry_run:
                 self.info_out(f"dry run {repo_owner_and_name}")
             else:
