@@ -92,6 +92,7 @@ bup D:\backup -a -p my-profile   # S3 and DynamoDB, with an AWS profile
 bup D:\backup -g -t <token>      # GitHub (the token is saved for later runs)
 bup D:\backup -s --dry_run       # show what an S3 backup would do
 bup D:\backup -s --verify        # S3, then verify every local file against S3
+bup D:\backup -s --verify --fix_mtime   # and fix the modification times that differ
 bup --help                       # all the options
 ```
 
@@ -218,6 +219,36 @@ verified 40 files in 1 buckets against S3, 0 differ (S3 could not be reached, so
 
 A dry run is not verified, and Stop ends the verification.
 
+### Fixing modification times (optional)
+
+A local file can have the contents of its S3 object but another modification time, e.g. a file that an earlier
+tool wrote with another time. A sync leaves such a file alone when it is newer than the S3 object, so the
+verification warns about it on every run. With "The verification fixes the modification time of a local file that
+has the contents of its S3 object" set in Preferences as well (`--fix_mtime` on the command line, with `--verify`),
+the verification gives each of these files the modification time of its S3 object, but only once its contents are
+known to be the S3 object's:
+
+- **S3 has a hash of the object:** the size and the hash of the local file are compared with the S3 object's again
+  (with the metadata of the object as it is now), and then the time is set. Nothing is downloaded.
+- **S3 has no hash of the object:** the same size is not enough to say the contents are the same, so the object is
+  downloaded to a temporary directory, the SHA-512 of the download and of the local file are compared, and the
+  download is removed. The time is only set when they are the same.
+
+The local file is never replaced, only its modification time is set. A file that turns out not to be a copy of its
+S3 object is an **error** (it counts as one that differs) and is left as it is, and so is one whose time could not
+be fixed (e.g. its download failed). The files are fixed one after the other, and each time that is changed is in
+the application log with the time the file had. Each bucket that had such files has a line in the backup output:
+
+```
+my-bucket : fixed the modification time of 107 of 107 files that have a different modification time (106 after a download to compare, since S3 has no hash of them)
+```
+
+It is off by default because it changes local files and because the downloads cost what any download does: data
+transfer, and the retrieval fee of some storage classes. They are in the bucket's verification row of the transfer
+(see "Transfer and approximate AWS cost"). A file is only fixed once: the next verification finds its time to be
+the S3 object's. Stop ends the fix, and so does S3 no longer being reachable (one **error**); the files it did not
+get to are warnings as before.
+
 ## S3 keys and local file names
 
 An S3 key is any string, and a local file name is not. bup never changes the name a file already has in the backup.
@@ -257,7 +288,8 @@ CLI prints the same lines in its regular output.
   ```
 
   The first line is $0.108 of data transfer, $0.036 of retrieval fee and $0.013 of requests. The verification
-  reads no objects, so it is requests alone.
+  reads no objects, so it is requests alone, unless it fixes modification times: the objects that are downloaded
+  to compare (see "Fixing modification times") are then what its row received.
 - **DynamoDB:** the size of the table scan responses, priced as data transfer out, plus the read units the scan
   consumed, priced as on-demand reads. Tables are only scanned when they have changed or about once a day, so many
   runs receive nothing.
