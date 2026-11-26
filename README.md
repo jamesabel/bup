@@ -232,7 +232,10 @@ known to be the S3 object's:
   (with the metadata of the object as it is now), and then the time is set. Nothing is downloaded.
 - **S3 has no hash of the object:** the same size is not enough to say the contents are the same, so the object is
   downloaded to a temporary directory, the SHA-512 of the download and of the local file are compared, and the
-  download is removed. The time is only set when they are the same.
+  download is deleted. The time is only set when they are the same. The temporary directory is `s3_temp` in the
+  backup directory, so it is on the backup drive, which has the room. Each download is deleted as soon as it has
+  been compared, also when the download or the comparison fails, and `s3_temp` itself is removed once a bucket's
+  files are done. Anything a run that was cut short (e.g. a power loss) left there is removed by the next fix.
 
 The local file is never replaced, only its modification time is set. A file that turns out not to be a copy of its
 S3 object is an **error** (it counts as one that differs) and is left as it is, and so is one whose time could not

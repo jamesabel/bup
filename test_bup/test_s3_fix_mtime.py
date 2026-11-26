@@ -1,7 +1,8 @@
 """
 Tests for the optional fix of the modification times that the verification of the S3 backup finds to differ: a local file that has
 the contents of its S3 object gets the modification time of the S3 object, where the contents are compared by the hash S3 has, or
-with a download of the object when S3 has no hash of it.
+with a download of the object when S3 has no hash of it. The download goes to a temporary directory in the backup directory, and is
+deleted once it has been compared.
 All tests, fixtures and helpers in this file are AI-authored (Claude Code).
 The repository's conftest.py gives every test an empty AWS price cache of its own and makes fetching prices fail as if offline.
 """
@@ -22,7 +23,8 @@ from botocore.exceptions import EndpointConnectionError
 from bup import arguments
 from bup.cli.cli_main import cli_main
 from bup.gui.preferences_widget import PreferencesWidget
-from bup.s3_mtime_fix import MtimeFix, MtimeFixOutcome, fix_local_mtime
+from bup import s3_mtime_fix
+from bup.s3_mtime_fix import MtimeFix, MtimeFixOutcome, fix_local_mtime, temp_dir_name
 
 from .s3_sync_fakes import FakeS3, make_preferences, make_s3_backup, make_sync_result, make_verify_result, run_real_s3_backup, run_s3_backup
 
@@ -103,11 +105,25 @@ def test_real_file_without_a_hash_in_s3_is_compared_with_a_download_and_gets_the
     local_path = tmp_path / "s3" / "no-hash-bucket" / "folder" / "a.txt"
     _offset_mtime(local_path)
 
-    backup = run_real_s3_backup(tmp_path, s3_verify=True, s3_fix_mtime=True)
+    hashed_paths = []
+    real_get_file_hash = s3_mtime_fix.get_file_hash
+
+    def get_file_hash(hashed_path):
+        hashed_paths.append(hashed_path)
+        return real_get_file_hash(hashed_path)
+
+    with patch("bup.s3_mtime_fix.get_file_hash", get_file_hash):
+        backup = run_real_s3_backup(tmp_path, s3_verify=True, s3_fix_mtime=True)
 
     assert backup.errors == []
     assert backup.warnings == []
     assert "no-hash-bucket : verified 1 of 1 files against S3 : 0 differ, 1 have a different modification time, 1 have no hash in S3 (size and modification time only)" in backup.infos
+    # the local file was compared with a download in the temporary directory of the backup directory (so on the backup drive), which is gone again
+    temp_dir = tmp_path / temp_dir_name
+    local_hashed_path, download_hashed_path = hashed_paths
+    assert local_hashed_path == local_path
+    assert download_hashed_path.is_relative_to(temp_dir)
+    assert not temp_dir.exists()
     assert local_path.stat().st_mtime == pytest.approx(_get_s3_mtime(moto_s3_endpoint, "no-hash-bucket", "folder/a.txt"), abs=1.0)
     assert "no-hash-bucket : fixed the modification time of 1 of 1 files that have a different modification time (1 after a download to compare, since S3 has no hash of them)" in backup.infos
     # the download is what the verification received
@@ -131,6 +147,7 @@ def test_real_file_without_a_hash_in_s3_that_is_not_the_download_is_an_error_and
     assert backup.warnings == []  # an error, not also a warning
     assert local_path.stat().st_mtime == mtime
     assert local_path.read_bytes() == b"z" * 1000
+    assert not (tmp_path / temp_dir_name).exists()  # the download is deleted, also when it is not what the local file is
     assert "no-hash-bucket : verified 1 of 1 files against S3 : 1 differ, 0 have a different modification time, 1 have no hash in S3 (size and modification time only)" in backup.infos
     assert "no-hash-bucket : fixed the modification time of 0 of 1 files that have a different modification time (0 after a download to compare, since S3 has no hash of them)" in backup.infos
     assert "verified 1 files in 1 buckets against S3, 1 differ" in backup.infos
@@ -152,7 +169,7 @@ def test_real_modification_time_is_not_fixed_unless_the_preference_is_set(moto_s
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
 def test_modification_time_that_could_not_be_fixed_is_an_error(tmp_path):
-    with patch("bup.s3_backup.fix_local_mtime", side_effect=lambda access, key, local_path: MtimeFix(key, MtimeFixOutcome.failed, "no such object")):
+    with patch("bup.s3_backup.fix_local_mtime", side_effect=lambda access, key, local_path, temp_dir: MtimeFix(key, MtimeFixOutcome.failed, "no such object")):
         backup, _unused_fake_s3 = _run_fake_backup_with_mtimes_that_differ(tmp_path, ["a.txt"])
 
     # S3 answers (the fake's head_bucket), so the file failed for a reason of its own
@@ -165,7 +182,7 @@ def test_modification_time_that_could_not_be_fixed_is_an_error(tmp_path):
 def test_fix_ends_when_s3_can_not_be_reached(tmp_path):
     connection_error = EndpointConnectionError(endpoint_url="https://my-bucket.s3.amazonaws.com/")
 
-    def unreachable_fix(access, key, local_path):
+    def unreachable_fix(access, key, local_path, temp_dir):
         access.client.head_bucket.side_effect = connection_error  # from here on S3 does not answer
         return MtimeFix(key, MtimeFixOutcome.failed, str(connection_error))
 
@@ -183,7 +200,7 @@ def test_fix_ends_when_s3_can_not_be_reached(tmp_path):
 def test_fix_ends_when_the_backup_is_stopped(tmp_path):
     backup = make_s3_backup()
 
-    def stopping_fix(access, key, local_path):
+    def stopping_fix(access, key, local_path, temp_dir):
         backup.request_stop()  # e.g. Stop is pressed during the fix of the first file
         return MtimeFix(key, MtimeFixOutcome.fixed, old_mtime=2.0, new_mtime=1.0)
 
@@ -204,7 +221,7 @@ def test_fix_local_mtime_leaves_a_file_of_another_size(tmp_path):
     access = MagicMock()
     access.get_s3_object_metadata.return_value.size = 11
 
-    fix = fix_local_mtime(access, "a.txt", local_path)
+    fix = fix_local_mtime(access, "a.txt", local_path, tmp_path / temp_dir_name)
 
     assert fix == MtimeFix("a.txt", MtimeFixOutcome.differs, "the local file is 10 bytes but the S3 object is 11 bytes")
     access.download.assert_not_called()
@@ -219,7 +236,58 @@ def test_fix_local_mtime_reports_a_failure_and_does_not_raise(tmp_path, failure)
     access = MagicMock()
     access.get_s3_object_metadata.side_effect = failure
 
-    assert fix_local_mtime(access, "a.txt", local_path) == MtimeFix("a.txt", MtimeFixOutcome.failed, str(failure))
+    assert fix_local_mtime(access, "a.txt", local_path, tmp_path / temp_dir_name) == MtimeFix("a.txt", MtimeFixOutcome.failed, str(failure))
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_fix_local_mtime_deletes_a_download_that_failed_part_way(tmp_path):
+    local_path = tmp_path / "a.txt"
+    local_path.write_bytes(b"x" * 10)
+    mtime = local_path.stat().st_mtime
+    temp_dir = tmp_path / temp_dir_name
+    download_paths = []
+
+    def download(key, download_path, s3_object_metadata):
+        download_paths.append(download_path)
+        download_path.write_bytes(b"x" * 4)  # what was received before the connection dropped
+        raise AWSimpleException("couldn't download b/a.txt after 3 attempts")
+
+    access = MagicMock()
+    access.get_s3_object_metadata.return_value = MagicMock(size=10, sha512=None, checksums={})
+    access.get_s3_object_metadata.return_value.get_content_sha512.return_value = None  # S3 has no hash of this object
+    access.download.side_effect = download
+
+    fix = fix_local_mtime(access, "a.txt", local_path, temp_dir)
+
+    assert fix == MtimeFix("a.txt", MtimeFixOutcome.failed, "couldn't download b/a.txt after 3 attempts")
+    assert len(download_paths) == 1 and download_paths[0].is_relative_to(temp_dir)
+    assert not download_paths[0].exists()
+    assert list(temp_dir.iterdir()) == []
+    assert local_path.stat().st_mtime == mtime
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_download_left_by_a_run_that_was_cut_short_is_removed(tmp_path):
+    leftover = tmp_path / temp_dir_name / "tmp_of_an_earlier_run" / "s3_object"
+    leftover.parent.mkdir(parents=True)
+    leftover.write_bytes(b"x" * 1000)
+
+    with patch("bup.s3_backup.fix_local_mtime", side_effect=lambda access, key, local_path, temp_dir: MtimeFix(key, MtimeFixOutcome.fixed, old_mtime=2.0, new_mtime=1.0)):
+        backup, _unused_fake_s3 = _run_fake_backup_with_mtimes_that_differ(tmp_path, ["a.txt"])
+
+    assert backup.errors == []
+    assert not (tmp_path / temp_dir_name).exists()
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+def test_temporary_directory_that_can_not_be_removed_is_an_error(tmp_path):
+    with (
+        patch("bup.s3_backup.fix_local_mtime", side_effect=lambda access, key, local_path, temp_dir: MtimeFix(key, MtimeFixOutcome.fixed, old_mtime=2.0, new_mtime=1.0)),
+        patch("bup.s3_backup.remove_temp_dir", side_effect=[None, PermissionError("access is denied")]),  # before the first file, and after the last
+    ):
+        backup, _unused_fake_s3 = _run_fake_backup_with_mtimes_that_differ(tmp_path, ["a.txt"])
+
+    assert backup.errors == [f'could not remove the temporary directory "{tmp_path / temp_dir_name}" of the downloads that fix modification times : access is denied']
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
