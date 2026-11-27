@@ -2,7 +2,7 @@
 The version of bup, and what else describes the package (also read by the build, see pyproject.toml).
 """
 
-__version__ = "0.21.0"
+__version__ = "0.22.0"
 __application_name__ = "bup"
 __title__ = __application_name__
 __author__ = "abel"
