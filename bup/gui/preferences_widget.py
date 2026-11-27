@@ -3,14 +3,17 @@ The GUI's "Preferences" tab, and the widgets it is made of. A change in the tab 
 "save" button), which is what the backups read when they run.
 """
 
-from typing import Optional
+import threading
+from typing import Callable, Optional
 
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import QTimer, pyqtSignal
 from PyQt5.QtWidgets import QVBoxLayout, QWidget, QPushButton, QLabel, QFileDialog, QLineEdit, QCheckBox, QSpinBox
 
 from bup import get_preferences, UITypes
+from bup.credential_check import CredentialCheck, check_dynamodb_credentials, check_github_credentials, check_s3_credentials
 from bup.log_routing import set_detailed_file_logging, default_file_size_limit_mb
 from bup.gui.gui_util import make_row
+from bup.gui.status_line import status_emitter
 
 
 def get_gui_preferences():
@@ -120,10 +123,77 @@ class ShowButton(QPushButton):
             self.line_edit.setEchoMode(QLineEdit.Password)
 
 
+class CredentialCheckButton(QPushButton):
+    """
+    A button that checks the credentials of one backup type as they are in the preferences now (every edit is saved right away),
+    and says how the check went in the status line of the main window (and in its own tool tip). The check makes a request to AWS
+    or GitHub, which can take a while, so it runs in a thread of its own and the button is disabled until it is back.
+    """
+
+    result_signal = pyqtSignal(object)  # the CredentialCheck of a check, from its thread to the GUI thread
+
+    def __init__(self, name: str, check: Callable[..., CredentialCheck]):
+        """
+        :param name: what the button checks, e.g. "S3"
+        :param check: does the check: it is given the preferences and returns how the check went (see bup/credential_check.py)
+        """
+        super().__init__(f"Test {name}")
+        self.name = name
+        self.check = check
+        self.result: Optional[CredentialCheck] = None  # how the most recent check went, None if there has been none (or it is running)
+        self.check_thread: Optional[threading.Thread] = None
+        self.result_signal.connect(self.show_result)
+        self.clicked.connect(self.start_check)
+
+    def start_check(self):
+        """
+        Start the check, in its thread. The result is shown by show_result().
+        """
+        self.setEnabled(False)
+        self.result = None
+        self.setToolTip("")
+        status_emitter.status_signal.emit(f"Testing the {self.name} credentials ...")
+        # a daemon thread, so that a check that is waiting for a response does not keep bup from closing
+        self.check_thread = threading.Thread(target=self.run_check, args=(get_gui_preferences(),), name=f"{self.text()}", daemon=True)
+        self.check_thread.start()
+
+    def run_check(self, preferences):
+        """
+        What the thread runs: do the check and send how it went to the GUI thread.
+
+        :param preferences: the preferences to check the credentials of
+        """
+        try:
+            credential_check = self.check(preferences)
+        except Exception as e:
+            # not one of the failures a check reports itself: show it, since the button is waiting for a result, and let it on its way
+            self.send_result(CredentialCheck(False, f"{type(e).__name__} : {e}"))
+            raise
+        self.send_result(credential_check)
+
+    def send_result(self, credential_check: CredentialCheck):
+        """
+        Send how the check went to the GUI thread, from the thread of the check.
+        """
+        try:
+            self.result_signal.emit(credential_check)
+        except RuntimeError:
+            pass  # the button no longer exists (bup was closed while the check was running), so there is nowhere to show the result
+
+    def show_result(self, credential_check: CredentialCheck):
+        """
+        Show how the check went, and let the user check again. Connected to the result signal, so it runs in the GUI thread.
+        """
+        self.result = credential_check
+        self.setToolTip(credential_check.message)
+        status_emitter.status_signal.emit(f"{self.name} credentials: {credential_check.message}")
+        self.setEnabled(True)
+
+
 class PreferencesWidget(QWidget):
     """
-    "Preferences" tab - the backup directory, the AWS and GitHub credentials, the automatic backup schedule, the detailed log
-    directory and the options of a backup.
+    "Preferences" tab - the backup directory, the AWS and GitHub credentials with a test of each, the automatic backup schedule, the
+    detailed log directory and the options of a backup.
     """
 
     def __init__(self):
@@ -160,16 +230,19 @@ class PreferencesWidget(QWidget):
         self.layout().addWidget(self.aws_key_widget)
         self.add_space(1)
 
-        # AWS region
+        # AWS region, and a test of the AWS credentials for each backup type that uses them (their permissions can differ)
         self.aws_region_line_edit = PreferencesLineEdit("aws_region")
-        self.aws_region_widget = make_row("AWS Region:", self.aws_region_line_edit)
+        self.test_s3_button = CredentialCheckButton("S3", check_s3_credentials)
+        self.test_dynamodb_button = CredentialCheckButton("DynamoDB", check_dynamodb_credentials)
+        self.aws_region_widget = make_row("AWS Region:", self.aws_region_line_edit, self.test_s3_button, self.test_dynamodb_button)
         self.layout().addWidget(self.aws_region_widget)
         self.add_space(2)
 
         # github
         self.github_token_line_edit = PreferencesLineEdit("github_token", password=True)
         self.github_show_button = ShowButton(self.github_token_line_edit)
-        self.github_widget = make_row("github token:", self.github_token_line_edit, self.github_show_button)
+        self.test_github_button = CredentialCheckButton("GitHub", check_github_credentials)
+        self.github_widget = make_row("github token:", self.github_token_line_edit, self.github_show_button, self.test_github_button)
         self.layout().addWidget(self.github_widget)
         self.add_space(2)
 
