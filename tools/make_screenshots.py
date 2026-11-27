@@ -7,6 +7,7 @@ Nothing here reads or writes the real preferences, exclusions, AWS price cache o
 the GUI is given stand-ins for all of them, and every name, size and price shown is made up.
 """
 
+import hashlib
 import sys
 import tempfile
 import time
@@ -27,7 +28,7 @@ from bup.transfer import TransferRecord, transfer_emitter, get_charged_request_c
 
 screenshot_width = 1500
 screenshot_height = 820
-history_screenshot_width = 2000  # the History tab has many columns, and is captured wide enough to show them all
+history_screenshot_width = 2600  # the History tab has many columns, and is captured wide enough to show them all
 pane_heights = [110, 380, 150, 90]  # of each backup type's exclusions, log, warnings and errors panes (pixels)
 
 
@@ -156,8 +157,19 @@ def get_synthetic_counts(backup_type: BackupTypes, days_ago: float, files_synced
     :return: the counts of the run
     """
     found, excluded, files = synthetic_counts[backup_type]
-    is_s3 = backup_type is BackupTypes.S3
-    return BackupCounts(found, found - excluded - failed, excluded, round(files - 310 * days_ago) if is_s3 else None, files_synced if is_s3 else None)
+    counts = BackupCounts(found, found - excluded - failed, excluded)
+    if backup_type is BackupTypes.S3:
+        counts.files = round(files - 310 * days_ago)
+        counts.files_synced = files_synced
+        counts.size = counts.files * 412 * 1024  # made up average file size
+        counts.oldest_file_mtime = datetime(2017, 6, 3).timestamp()
+        counts.newest_file_mtime = time.time() - (days_ago + 0.4) * seconds_per_day
+        counts.files_hash = hashlib.sha256(str(counts.files).encode()).hexdigest()  # changes as the files do
+    elif backup_type is BackupTypes.DynamoDB:
+        counts.items = round(184220 - 95 * days_ago)
+    else:
+        counts.branches = round(3.4 * (found - excluded - failed))
+    return counts
 
 
 def make_synthetic_history(history: BackupHistory, transfer_records: list):

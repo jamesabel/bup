@@ -337,6 +337,15 @@ shows it in the "History" tab, most recent first. Each run has:
   "Backed up" count.
 - for S3, the total number of files in the backup of the buckets it synced, whenever they were downloaded (**Files**),
   and how many of them this run downloaded (**Files synced**)
+- for S3, what sums up those files: their total size (**Size**), the dates of the oldest and the newest of them, by
+  modification time (**File dates**), and a hash of them (**Files hash**). The hash is a SHA-256 of the path, size and
+  modification time (to the second) of every file, not of the contents of the files, which would all have to be read
+  on every run. It is the same from one run to the next as long as no file was added, removed or changed, so a hash
+  that changes when nothing was synced says that the backup directory was changed by something other than a sync
+  (the fix of modification times of `--fix_mtime` is one such thing: it runs after the files are summed up, so it
+  shows in the hash of the next run). The tab shows the start of the hash, and all of it when the mouse is over it.
+- for DynamoDB, the total number of items in the tables it backed up (**Items**)
+- for GitHub, the total number of branches of the repos it backed up (**Branches**)
 - what it received over the network, the average rate over the whole run, the DynamoDB read units, and the approximate
   AWS cost (see "Transfer and approximate AWS cost")
 - how many errors and warnings it had, and the error messages (the first 100 of them; the tab shows the first, and the

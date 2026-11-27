@@ -30,8 +30,13 @@ columns = [
     "Found",
     "Backed up",
     "Excluded",
+    "Items",
+    "Branches",
     "Files",
     "Files synced",
+    "Size",
+    "File dates",
+    "Files hash",
     "Received",
     "Average rate",
     "Read units",
@@ -41,12 +46,18 @@ columns = [
     "Error details",
 ]
 error_details_column = columns.index("Error details")
+files_hash_column = columns.index("Files hash")
+
+files_hash_shown_length = 12  # the characters of the files hash that its column shows (all of it is in the tool tip)
 
 history_note = (
     "One row per backup type each time it is run, from the GUI or the command line, most recent first. A backup that did not finish "
     "was cut short: bup was closed or crashed, or the system crashed or was shut down, while it was running. Found, Backed up and "
-    "Excluded are counts of buckets (S3), tables (DynamoDB) or repositories (GitHub). Files is the files in the backup of the S3 "
-    "buckets, and Files synced is how many of them this run downloaded. Costs are approximate (see the Transfer tab)."
+    "Excluded are counts of buckets (S3), tables (DynamoDB) or repositories (GitHub). Items is the items of the DynamoDB tables and "
+    "Branches the branches of the GitHub repositories that were backed up. Files is the files in the backup of the S3 buckets, and "
+    "Files synced is how many of them this run downloaded. Size is the total size of those files, File dates the range of their "
+    "modification times, and Files hash a hash of their paths, sizes and modification times (not of their contents), which is the "
+    "same from run to run while none of that changes. Costs are approximate (see the Transfer tab)."
 )
 
 
@@ -69,12 +80,26 @@ def format_count(count: Optional[int]) -> str:
     return "" if count is None else f"{count:,}"
 
 
+def format_date_range(oldest: Optional[float], newest: Optional[float]) -> str:
+    """
+    :param oldest: the earliest of some times (epoch seconds), None if there are none
+    :param newest: the latest of them
+    :return: the local dates they are from and to, e.g. "2019-03-01 to 2026-11-20" (one date if they are on the same day, "" if there are none)
+    """
+    if oldest is None or newest is None:
+        return ""
+    oldest_date = datetime.fromtimestamp(oldest).date().isoformat()
+    newest_date = datetime.fromtimestamp(newest).date().isoformat()
+    return oldest_date if oldest_date == newest_date else f"{oldest_date} to {newest_date}"
+
+
 def get_row_text(backup_run: BackupRun) -> List[str]:
     """
     :return: the text of each column of a backup run's row, in the order of the columns
     """
     duration = backup_run.duration
     average_rate = backup_run.average_rate
+    counts = backup_run.counts
     return [
         format_time(backup_run.started),
         "" if backup_run.ended is None else format_end_time(backup_run.started, backup_run.ended),
@@ -82,11 +107,16 @@ def get_row_text(backup_run: BackupRun) -> List[str]:
         "" if backup_run.backup_type is None else backup_run.backup_type.name,
         backup_run.ui_type.name.upper(),
         backup_run.status.value,
-        format_count(backup_run.counts.found),
-        format_count(backup_run.counts.backed_up),
-        format_count(backup_run.counts.excluded),
-        format_count(backup_run.counts.files),
-        format_count(backup_run.counts.files_synced),
+        format_count(counts.found),
+        format_count(counts.backed_up),
+        format_count(counts.excluded),
+        format_count(counts.items),
+        format_count(counts.branches),
+        format_count(counts.files),
+        format_count(counts.files_synced),
+        "" if counts.size is None else format_size(counts.size),
+        format_date_range(counts.oldest_file_mtime, counts.newest_file_mtime),
+        (counts.files_hash or "")[:files_hash_shown_length],
         format_size(backup_run.received_bytes),
         "" if average_rate is None or backup_run.received_bytes == 0 else f"{format_size(round(average_rate))}/s",
         f"{backup_run.read_units:g}" if backup_run.read_units > 0.0 else "",
@@ -144,6 +174,7 @@ class HistoryWidget(QWidget):
         for row, backup_run in enumerate(backup_runs):
             items = set_table_row(self.table, row, get_row_text(backup_run))
             items[error_details_column].setToolTip("\n".join(backup_run.errors))  # every error message on record, not only the first
+            items[files_hash_column].setToolTip(backup_run.counts.files_hash or "")  # all of the hash
 
     def showEvent(self, a0: QShowEvent) -> None:
         """

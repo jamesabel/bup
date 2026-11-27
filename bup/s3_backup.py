@@ -8,6 +8,7 @@ The parts: the helpers of a sync and its check (below), SyncedBucket, and S3Back
 of a bucket, the verification and the backup itself. The watch of a verification is in s3_verify.py.
 """
 
+import hashlib
 import os
 from dataclasses import dataclass
 from functools import partial
@@ -31,25 +32,70 @@ log = get_logger(__application_name__)
 max_keys_to_list = 20  # cap on the S3 keys named in the backup output for one bucket and one kind of outcome
 
 
+@dataclass
+class DirSummary:
+    """
+    What sums up the files under a directory, at any depth (see get_dir_summary()).
+    """
+
+    size: int = 0  # the total size of the files (bytes)
+    file_count: int = 0
+    oldest_mtime: Optional[float] = None  # the earliest modification time of the files (epoch seconds), None if there are no files
+    newest_mtime: Optional[float] = None  # the latest one
+    files_hash: str = ""  # hex SHA-256 of the path, size and modification time (to the second) of every file - not of their contents
+
+
 # sundry candidate
-def get_dir_size(dir_path: Path) -> Tuple[int, int]:
+def get_dir_summary(dir_path: Path) -> DirSummary:
     """
-    Total size (bytes) and number of the files under a directory, at any depth. A file whose size can not be had is left out
-    (with a warning in the log).
-    :return: (total size, file count)
+    Sum up the files under a directory, at any depth: their total size, how many there are, the range of their modification times,
+    and a hash that is the same for two directories only if they have the same files (by relative path) with the same sizes and
+    modification times. The hash is of that metadata and not of the contents of the files, which would all have to be read. The
+    modification time is hashed to the second, since file systems keep it to different precisions. A file whose size or
+    modification time can not be had is left out (with a warning in the log).
     """
-    dir_size = 0
-    file_count = 0
-    for root, _unused_dir_names, file_names in os.walk(dir_path):
-        for file_name in file_names:
+    summary = DirSummary()
+    files_hash = hashlib.sha256()
+    for root, dir_names, file_names in os.walk(dir_path):
+        dir_names.sort()  # os.walk() goes through them in this order, so that the hash does not depend on the order the OS lists them in
+        for file_name in sorted(file_names):
             file_path = os.path.join(root, file_name)
             try:
-                dir_size += os.path.getsize(file_path)
-                file_count += 1
+                size = os.path.getsize(file_path)
+                mtime = os.path.getmtime(file_path)
             except OSError as e:
                 # e.g. file removed mid-walk, or path too long for the OS API - don't let one file kill the backup
-                log.warning(f'could not get size of "{file_path}" : {e}')
-    return dir_size, file_count
+                log.warning(f'could not get the size and modification time of "{file_path}" : {e}')
+                continue
+            summary.size += size
+            summary.file_count += 1
+            summary.oldest_mtime = mtime if summary.oldest_mtime is None else min(summary.oldest_mtime, mtime)
+            summary.newest_mtime = mtime if summary.newest_mtime is None else max(summary.newest_mtime, mtime)
+            relative_path = Path(file_path).relative_to(dir_path).as_posix()
+            files_hash.update(f"{relative_path}\0{size}\0{int(mtime)}\n".encode("utf-8", errors="surrogateescape"))
+    summary.files_hash = files_hash.hexdigest()
+    return summary
+
+
+def get_dir_size(dir_path: Path) -> Tuple[int, int]:
+    """
+    Total size (bytes) and number of the files under a directory, at any depth (see get_dir_summary()).
+    :return: (total size, file count)
+    """
+    summary = get_dir_summary(dir_path)
+    return summary.size, summary.file_count
+
+
+def combine_hashes(hash_so_far: Optional[str], name: str, name_hash: str) -> str:
+    """
+    One hash for the hashes of several named things (the files of each bucket), taken one after the other.
+
+    :param hash_so_far: the hash of the ones before this one, None if this is the first
+    :param name: what this one is the hash of, e.g. a bucket
+    :param name_hash: its hash
+    :return: the hash of all of them up to this one (hex SHA-256)
+    """
+    return hashlib.sha256(f"{hash_so_far or ''}\n{name}\n{name_hash}".encode("utf-8", errors="surrogateescape")).hexdigest()
 
 
 def get_bucket_size(s3_client, bucket_name: str) -> Tuple[int, int]:
@@ -257,6 +303,22 @@ class S3Backup(BupBase):
             cost = get_s3_cost(received_bytes, tier_counts, download_sizes, get_aws_prices(bucket.region))
             self.transfer_out(TransferRecord(BackupTypes.S3, name, received_bytes, cost=cost, region=bucket.region, requests=request_count))
 
+    def count_files(self, bucket_name: str, local_summary: DirSummary):
+        """
+        Add the files of the local backup of a bucket to what this run counts for the backup history: how many there are, their
+        total size, the range of their modification times and their hash (of the buckets in the order they are backed up).
+
+        :param bucket_name: the bucket
+        :param local_summary: what sums up the files of its local backup
+        """
+        counts = self.counts
+        counts.files = (counts.files or 0) + local_summary.file_count
+        counts.size = (counts.size or 0) + local_summary.size
+        if local_summary.oldest_mtime is not None and local_summary.newest_mtime is not None:  # the bucket has files
+            counts.oldest_file_mtime = local_summary.oldest_mtime if counts.oldest_file_mtime is None else min(counts.oldest_file_mtime, local_summary.oldest_mtime)
+            counts.newest_file_mtime = local_summary.newest_mtime if counts.newest_file_mtime is None else max(counts.newest_file_mtime, local_summary.newest_mtime)
+        counts.files_hash = combine_hashes(counts.files_hash, bucket_name, local_summary.files_hash)
+
     def check_bucket_size(self, bucket: SyncedBucket) -> bool:
         """
         Check the sync of a bucket with a listing of the bucket of our own (not the sync's): everything in the bucket, other than the
@@ -273,8 +335,9 @@ class S3Backup(BupBase):
 
         sync_result = bucket.sync_result
         backed_up_size = s3_total_size - sync_result.get_size(S3SyncOutcome.skipped) - sync_result.get_size(S3SyncOutcome.failed)
-        local_size, local_count = get_dir_size(bucket.destination)
-        self.counts.files = (self.counts.files or 0) + local_count
+        local_summary = get_dir_summary(bucket.destination)
+        local_size, local_count = local_summary.size, local_summary.file_count
+        self.count_files(bucket.name, local_summary)
         level, message = compare_backup_sizes(backed_up_size, local_size)
         output_routines = {"error": self.error_out, "info": log.info}
         output_routines[level](

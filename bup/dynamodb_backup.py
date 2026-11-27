@@ -123,6 +123,7 @@ class DynamoDBBackup(BupBase):
         except OSError as e:
             self.error_out(f"could not write backup files for {table_name} : {e}")
             return False
+        self.counts.items = (self.counts.items or 0) + len(table_contents)
         return True
 
     def run_backup(self):
@@ -142,6 +143,8 @@ class DynamoDBBackup(BupBase):
             return
         self.info_out(f"found {len(tables)} DynamoDB tables")
         self.start_counts(len(tables), dry_run)
+        if not dry_run:  # a dry run reads no table
+            self.counts.items = 0
 
         count = 0
         for table_name in tables:
