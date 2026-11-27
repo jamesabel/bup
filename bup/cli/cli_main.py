@@ -71,9 +71,7 @@ def cli_main(args):
     if args.region is not None:
         preferences.aws_region = args.region
     preferences.dry_run = args.dry_run
-    preferences.s3_size_only = args.size_only
     preferences.s3_verify = args.verify
-    preferences.s3_fix_mtime = args.fix_mtime
 
     backup_types = get_selected_backup_types(args)
 

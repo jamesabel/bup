@@ -20,12 +20,20 @@ from bup import arguments
 from bup.cli.cli_main import cli_main
 from bup.gui.preferences_widget import PreferencesWidget
 from bup.s3_backup import max_keys_to_list
+from bup.s3_mtime_fix import MtimeFix, MtimeFixOutcome
 
 from .s3_sync_fakes import FakeS3, downloaded, make_preferences, make_s3_backup, make_sync_result, make_verify_result, run_real_s3_backup, run_s3_backup, verified
 
 
 def _up_to_date(key: str, size: int = 10) -> S3SyncObject:
     return S3SyncObject(key, size, S3SyncOutcome.up_to_date)
+
+
+def _fixed(access, key: str, local_path: Path, temp_dir: Path) -> MtimeFix:
+    """
+    Stand-in for fix_local_mtime(): the local file has the contents of its S3 object, and was given its modification time.
+    """
+    return MtimeFix(key, MtimeFixOutcome.fixed, old_mtime=2.0, new_mtime=1.0)
 
 
 def _run_verified_backup(tmp_path: Path, sync_objects: List[S3SyncObject], verify_objects: List[S3VerifyObject], **preferences):
@@ -91,15 +99,19 @@ def test_local_file_that_is_not_a_copy_is_an_error(tmp_path):
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
-def test_mtime_that_differs_is_a_warning(tmp_path):
+def test_mtime_that_differs_is_fixed_and_is_not_a_warning(tmp_path):
+    # the fix is part of the verification: there is no preference for it (its own tests are in test_s3_fix_mtime.py)
     reason = "the local file was modified +3600 seconds from the S3 object (2026-11-20T12:00:00+00:00)"
-    verify_objects = [S3VerifyObject("a.txt", S3VerifyOutcome.mtime_differs, reason=reason, hash_name="SHA-512")]
+    verify_objects = [S3VerifyObject("a.txt", S3VerifyOutcome.mtime_differs, Path(tmp_path, "s3", "my-bucket", "a.txt"), reason, hash_name="SHA-512")]
 
-    backup, _unused_fake_s3 = _run_verified_backup(tmp_path, [_up_to_date("a.txt")], verify_objects)
+    with patch("bup.s3_backup.fix_local_mtime", side_effect=_fixed) as mock_fix:
+        backup, _unused_fake_s3 = _run_verified_backup(tmp_path, [_up_to_date("a.txt")], verify_objects)
 
+    assert mock_fix.call_count == 1
     assert backup.errors == []
-    assert backup.warnings == [f'my-bucket : "a.txt" has the contents of the S3 object, but {reason}']
+    assert backup.warnings == []
     assert "my-bucket : verified 1 of 1 files against S3 : 0 differ, 1 have a different modification time, 0 have no hash in S3 (size and modification time only)" in backup.infos
+    assert "my-bucket : fixed the modification time of 1 of 1 files that have a different modification time (0 after a download to compare, since S3 has no hash of them)" in backup.infos
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
@@ -120,9 +132,11 @@ def test_file_that_could_not_be_verified_is_an_error(tmp_path):
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
 def test_objects_without_a_hash_in_s3_are_counted(tmp_path):
     # S3 has no hash of the whole contents of these, so awsimple verified them by size and modification time (no hash name)
-    verify_objects = [verified("a.txt"), verified("b.txt", hash_name=None), S3VerifyObject("c.txt", S3VerifyOutcome.mtime_differs, reason="the local file was modified +60 seconds")]
+    mtime_differs = S3VerifyObject("c.txt", S3VerifyOutcome.mtime_differs, Path(tmp_path, "s3", "my-bucket", "c.txt"), "the local file was modified +60 seconds")
+    verify_objects = [verified("a.txt"), verified("b.txt", hash_name=None), mtime_differs]
 
-    backup, _unused_fake_s3 = _run_verified_backup(tmp_path, [_up_to_date("a.txt"), _up_to_date("b.txt"), _up_to_date("c.txt")], verify_objects)
+    with patch("bup.s3_backup.fix_local_mtime", side_effect=_fixed):
+        backup, _unused_fake_s3 = _run_verified_backup(tmp_path, [_up_to_date("a.txt"), _up_to_date("b.txt"), _up_to_date("c.txt")], verify_objects)
 
     assert backup.errors == []
     assert "my-bucket : verified 3 of 3 files against S3 : 0 differ, 1 have a different modification time, 2 have no hash in S3 (size and modification time only)" in backup.infos
@@ -208,17 +222,21 @@ def test_real_verification_takes_modification_times_within_ten_seconds_as_the_sa
         s3_client.put_object(Bucket="mtime-bucket", Key=name, Body=b"x" * 100, ChecksumAlgorithm="CRC64NVME")
     run_real_s3_backup(tmp_path)
     # local files that are newer than their S3 objects, which a sync leaves alone
+    mtimes = {}
     for name, seconds in (("in_window.txt", 8.0), ("outside.txt", 60.0)):
         local_path = tmp_path / "s3" / "mtime-bucket" / name
-        mtime = local_path.stat().st_mtime + seconds
-        os.utime(local_path, (mtime, mtime))
+        mtimes[name] = local_path.stat().st_mtime + seconds
+        os.utime(local_path, (mtimes[name], mtimes[name]))
 
     backup = run_real_s3_backup(tmp_path, s3_verify=True)
 
     assert backup.errors == []
-    assert len(backup.warnings) == 1
-    assert backup.warnings[0].startswith('mtime-bucket : "outside.txt" has the contents of the S3 object, but the local file was modified +60 seconds from the S3 object (')
+    assert backup.warnings == []
     assert "mtime-bucket : verified 2 of 2 files against S3 : 0 differ, 1 have a different modification time, 0 have no hash in S3 (size and modification time only)" in backup.infos
+    # only the file outside of the window is taken to have another modification time, which the verification then fixes
+    assert "mtime-bucket : fixed the modification time of 1 of 1 files that have a different modification time (0 after a download to compare, since S3 has no hash of them)" in backup.infos
+    assert (tmp_path / "s3" / "mtime-bucket" / "in_window.txt").stat().st_mtime == mtimes["in_window.txt"]
+    assert (tmp_path / "s3" / "mtime-bucket" / "outside.txt").stat().st_mtime == pytest.approx(mtimes["outside.txt"] - 60.0, abs=1.0)
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
@@ -234,7 +252,7 @@ def test_verify_command_line_argument(monkeypatch):
 @pytest.mark.parametrize("verify", [True, False])
 def test_verify_argument_is_written_to_the_preferences(verify):
     preferences = MagicMock(detailed_log_directory=None, detailed_log_file_size_limit_mb=None)
-    args = MagicMock(path="backup_dir", token=None, profile=None, region=None, dry_run=False, size_only=False, verify=verify, exclude=None, s3=False, dynamodb=False, github=False, aws=False)
+    args = MagicMock(path="backup_dir", token=None, profile=None, region=None, dry_run=False, verify=verify, exclude=None, s3=False, dynamodb=False, github=False, aws=False)
 
     with patch("bup.cli.cli_main.get_preferences", return_value=preferences), patch("bup.cli.cli_main.Balsa"), patch("bup.cli.cli_main.set_detailed_file_logging"):
         cli_main(args)
@@ -255,7 +273,6 @@ def test_verify_check_box_loads_and_saves_the_preference(qapp):
         detailed_log_file_size_limit_mb=None,
         verbose=False,
         dry_run=False,
-        s3_size_only=False,
         s3_verify=True,
         automatic_backup=False,
         backup_period=None,

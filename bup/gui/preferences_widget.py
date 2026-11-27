@@ -283,15 +283,13 @@ class PreferencesWidget(QWidget):
 
         # the options of a backup
         self.dry_run_check_box = PreferenceCheckBox("Dry run", "dry_run")
-        self.s3_size_only_check_box = PreferenceCheckBox("S3 sync compares file size only, not timestamps (--size_only)", "s3_size_only")
         self.s3_verify_check_box = PreferenceCheckBox(
-            "S3 backup is followed by a verification of every local file against S3: size, hash and modification time (a request to S3 per object, and reads every file)", "s3_verify"
-        )
-        self.s3_fix_mtime_check_box = PreferenceCheckBox(
-            "The verification fixes the modification time of a local file that has the contents of its S3 object (downloads an object S3 has no hash of, to compare)", "s3_fix_mtime"
+            "S3 backup is followed by a verification of every local file against S3: size, hash and modification time (a request to S3 per object, and reads every file). "
+            "It fixes the modification time of a file that has the contents of its S3 object.",
+            "s3_verify",
         )
         self.verbose_check_box = PreferenceCheckBox("Verbose", "verbose")
-        for check_box in (self.dry_run_check_box, self.s3_size_only_check_box, self.s3_verify_check_box, self.s3_fix_mtime_check_box, self.verbose_check_box):
+        for check_box in (self.dry_run_check_box, self.s3_verify_check_box, self.verbose_check_box):
             self.layout().addWidget(check_box)
 
         layout.addStretch()  # bottom padding
@@ -306,9 +304,7 @@ class PreferencesWidget(QWidget):
             self.github_token_line_edit,
             self.detailed_log_directory_line_edit,
             self.dry_run_check_box,
-            self.s3_size_only_check_box,
             self.s3_verify_check_box,
-            self.s3_fix_mtime_check_box,
             self.verbose_check_box,
         ]
 

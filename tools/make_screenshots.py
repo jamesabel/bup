@@ -44,9 +44,7 @@ class SyntheticPreferences:
     automatic_backup = True
     backup_period = 24  # hours
     dry_run = False
-    s3_size_only = False
     s3_verify = False
-    s3_fix_mtime = False
     verbose = False
 
     def __getattr__(self, name: str):

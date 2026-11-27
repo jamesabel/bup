@@ -67,23 +67,6 @@ def test_dry_run_false_written_to_preferences(mock_get_prefs, mock_balsa, mock_g
 @patch("bup.cli.cli_main.GithubBackup")
 @patch("bup.cli.cli_main.Balsa")
 @patch("bup.cli.cli_main.get_preferences")
-def test_size_only_written_to_preferences(mock_get_prefs, mock_balsa, mock_gh, mock_ddb, mock_s3):
-    prefs = _make_prefs()
-    mock_get_prefs.return_value = prefs
-    from bup.cli.cli_main import cli_main
-
-    cli_main(_make_args(size_only=True))
-    assert prefs.s3_size_only is True
-
-    cli_main(_make_args(size_only=False))
-    assert prefs.s3_size_only is False
-
-
-@patch("bup.cli.cli_main.S3Backup")
-@patch("bup.cli.cli_main.DynamoDBBackup")
-@patch("bup.cli.cli_main.GithubBackup")
-@patch("bup.cli.cli_main.Balsa")
-@patch("bup.cli.cli_main.get_preferences")
 def test_s3_backup_started_with_s3_flag(mock_get_prefs, mock_balsa, mock_gh, mock_ddb, mock_s3):
     prefs = _make_prefs()
     mock_get_prefs.return_value = prefs

@@ -92,16 +92,6 @@ def test_checkbox_verbose_dry_run(mock_get, qapp):
     w.dry_run_check_box.setChecked(True)
     w.dry_run_check_box.click()
     assert prefs.dry_run == w.dry_run_check_box.isChecked()
-    w.s3_size_only_check_box.click()
-    assert prefs.s3_size_only == w.s3_size_only_check_box.isChecked()
-
-
-@patch("bup.gui.preferences_widget.set_detailed_file_logging")
-@patch("bup.gui.preferences_widget.get_gui_preferences")
-def test_s3_size_only_loaded_true(mock_get, mock_set_detailed, qapp):
-    mock_get.return_value = _make_mock_prefs(s3_size_only=True)
-    w = PreferencesWidget()
-    assert w.s3_size_only_check_box.isChecked()
 
 
 @patch("bup.gui.preferences_widget.get_gui_preferences")
