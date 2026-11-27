@@ -34,10 +34,9 @@ class BupPreferences(Pref):
 
     dry_run: bool = attrib(default=False)
 
-    s3_size_only: bool = attrib(default=False)  # S3 sync compares file size only, not timestamps
-    s3_verify: bool = attrib(default=False)  # after the S3 backup, verify every local file against the metadata of its S3 object (size, hash, modification time)
-    # with s3_verify: a local file that has the contents of its S3 object but another modification time gets the time of the S3 object (see s3_mtime_fix.py)
-    s3_fix_mtime: bool = attrib(default=False)
+    # after the S3 backup, verify every local file against the metadata of its S3 object (size, hash, modification time). A local file that has the
+    # contents of its S3 object but another modification time then gets the time of the S3 object (see s3_mtime_fix.py).
+    s3_verify: bool = attrib(default=False)
 
     verbose: bool = attrib(default=False)
 

@@ -47,19 +47,13 @@ def arguments():
         parser.add_argument("-r", "--region", help="AWS region (uses the default AWS region if not given)")
         parser.add_argument("-t", "--token", help="github token (saved and used on subsequent runs)")
         parser.add_argument("--dry_run", action="store_true", default=False, help="displays operations that would be performed using the specified command without actually running them")
-        parser.add_argument("--size_only", action="store_true", default=False, help="AWS S3 sync compares file size only, not timestamps")
         parser.add_argument(
             "--verify",
             action="store_true",
             default=False,
-            help="after the AWS S3 backup, verify every local file against its S3 object (size, hash and modification time) - makes a request to S3 for every object and reads every local file",
-        )
-        parser.add_argument(
-            "--fix_mtime",
-            action="store_true",
-            default=False,
-            help="with --verify: give a local file that has the contents of its S3 object but another modification time the time of the S3 object - "
-            "an object S3 has no hash of is downloaded to a temporary directory on the backup drive to compare the contents",
+            help="after the AWS S3 backup, verify every local file against its S3 object (size, hash and modification time) - makes a request to S3 for every object and reads every local file. "
+            "A local file that has the contents of its S3 object but another modification time is given the time of the S3 object "
+            "(an object S3 has no hash of is downloaded to a temporary directory on the backup drive to compare the contents)",
         )
         parser.add_argument(f"--{version_string}", action="store_true", default=False, help="display version and exit")
         parser.add_argument("-v", f"--{verbose_arg_string}", dest=verbose_arg_string, action="store_true", default=False, help="set verbose")

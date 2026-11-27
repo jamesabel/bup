@@ -98,7 +98,6 @@ bup D:\backup -a -p my-profile   # S3 and DynamoDB, with an AWS profile
 bup D:\backup -g -t <token>      # GitHub (the token is saved for later runs)
 bup D:\backup -s --dry_run       # show what an S3 backup would do
 bup D:\backup -s --verify        # S3, then verify every local file against S3
-bup D:\backup -s --verify --fix_mtime   # and fix the modification times that differ
 bup --help                       # all the options
 ```
 
@@ -131,7 +130,7 @@ Each bucket is synced to `s3/<bucket>/` with [awsimple](https://github.com/james
 `S3Access.sync_to_directory()`, which works like `aws s3 sync` from a bucket to a directory:
 
 - The bucket is listed once. An object is downloaded when its local file is missing, has a different size, or is
-  older than the S3 object. With the "size only" preference (`--size_only`) modification times are not compared.
+  older than the S3 object.
 - A download goes to a temporary file, which only replaces the local file once its length and checksum (S3's
   CRC64NVME, when the object has one) are those of the S3 object. The local file gets the modification time of the
   S3 object.
@@ -185,7 +184,8 @@ A bucket that was stopped part way is not verified.
 The check above is of total sizes. With "S3 backup is followed by a verification of every local file against S3"
 set in Preferences (`--verify` on the command line), bup also checks every file once all the buckets are backed
 up. It is off by default because it takes a while and costs something: it makes a request to S3 for the metadata
-of every object and reads every local file to hash it, on every run. AWS charges for these requests by the storage
+of every object and reads every local file to hash it, on every run. It also sets the modification time of a local
+file that has the contents of its S3 object but another time (see "Fixing modification times"). AWS charges for these requests by the storage
 class of the object: about $0.0004 per 1000 for STANDARD objects, and about $0.01 per 1000 (25 times that) for
 Glacier Instant Retrieval objects. bup reports the requests of each bucket's verification and their approximate
 cost (see "Transfer and approximate AWS cost").
@@ -204,8 +204,8 @@ file (downloaded in this run, or already up to date), the local file is compared
 
 A file that is missing or whose size or hash is not the S3 object's is an **error**, and so is a file that could not
 be verified (e.g. the metadata of its S3 object could not be had). A file with the contents of
-the S3 object but another modification time is a **warning** (e.g. with "size only" set, an object that was
-written to S3 again with the same size is not downloaded again). At most 20 files are named per bucket for each.
+the S3 object but another modification time is given the time of the S3 object (see "Fixing modification times").
+At most 20 files are named per bucket for each.
 Each bucket has a result line in the backup output, followed by a total:
 
 ```
@@ -225,14 +225,12 @@ verified 40 files in 1 buckets against S3, 0 differ (S3 could not be reached, so
 
 A dry run is not verified, and Stop ends the verification.
 
-### Fixing modification times (optional)
+### Fixing modification times
 
 A local file can have the contents of its S3 object but another modification time, e.g. a file that an earlier
-tool wrote with another time. A sync leaves such a file alone when it is newer than the S3 object, so the
-verification warns about it on every run. With "The verification fixes the modification time of a local file that
-has the contents of its S3 object" set in Preferences as well (`--fix_mtime` on the command line, with `--verify`),
-the verification gives each of these files the modification time of its S3 object, but only once its contents are
-known to be the S3 object's:
+tool wrote with another time. A sync leaves such a file alone when it is newer than the S3 object, so a
+verification would find it on every run. The verification therefore gives each of these files the modification
+time of its S3 object, but only once its contents are known to be the S3 object's:
 
 - **S3 has a hash of the object:** the size and the hash of the local file are compared with the S3 object's again
   (with the metadata of the object as it is now), and then the time is set. Nothing is downloaded.
@@ -252,11 +250,10 @@ the application log with the time the file had. Each bucket that had such files 
 my-bucket : fixed the modification time of 107 of 107 files that have a different modification time (106 after a download to compare, since S3 has no hash of them)
 ```
 
-It is off by default because it changes local files and because the downloads cost what any download does: data
-transfer, and the retrieval fee of some storage classes. They are in the bucket's verification row of the transfer
-(see "Transfer and approximate AWS cost"). A file is only fixed once: the next verification finds its time to be
-the S3 object's. Stop ends the fix, and so does S3 no longer being reachable (one **error**); the files it did not
-get to are warnings as before.
+The downloads cost what any download does: data transfer, and the retrieval fee of some storage classes. They are
+in the bucket's verification row of the transfer (see "Transfer and approximate AWS cost"). A file is only fixed
+once: the next verification finds its time to be the S3 object's. Stop ends the fix, and so does S3 no longer being
+reachable (one **error**); a file it did not get to is a **warning**, and is fixed by the next verification.
 
 ## S3 keys and local file names
 
@@ -348,7 +345,7 @@ shows it in the "History" tab, most recent first. Each run has:
   modification time (to the second) of every file, not of the contents of the files, which would all have to be read
   on every run. It is the same from one run to the next as long as no file was added, removed or changed, so a hash
   that changes when nothing was synced says that the backup directory was changed by something other than a sync
-  (the fix of modification times of `--fix_mtime` is one such thing: it runs after the files are summed up, so it
+  (the fix of modification times of the verification is one such thing: it runs after the files are summed up, so it
   shows in the hash of the next run). The tab shows the start of the hash, and all of it when the mouse is over it.
 - for DynamoDB, the total number of items in the tables it backed up (**Items**)
 - for GitHub, the total number of branches of the repos it backed up (**Branches**)

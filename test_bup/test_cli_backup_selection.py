@@ -18,7 +18,7 @@ def _run_cli(**selected) -> tuple:
     Run the CLI with the given arguments (e.g. s3=True, exclude=["a"]), with stand-ins for the backups, the preferences and the logging.
     :return: (the backup classes that were made, by backup type name, and the exclusions that were set, by backup type name)
     """
-    arguments = dict(path="backup_dir", token=None, profile=None, region=None, dry_run=False, size_only=False, verify=False, fix_mtime=False, exclude=None)
+    arguments = dict(path="backup_dir", token=None, profile=None, region=None, dry_run=False, verify=False, exclude=None)
     arguments.update(s3=False, dynamodb=False, github=False, aws=False)
     arguments.update(selected)
     exclusions_set: Dict[str, List[str]] = {}
