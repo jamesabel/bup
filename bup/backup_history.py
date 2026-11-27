@@ -53,8 +53,8 @@ class BackupStatus(Enum):
 @dataclass
 class BackupCounts:
     """
-    What a backup run counted. A count is None if the run has not counted it (yet, or it was recorded by a bup that did not), or if
-    its backup type does not have it.
+    What a backup run counted, and the other figures that sum up what it backed up. One is None if the run does not have it (yet,
+    or it was recorded by a bup that did not), or if its backup type does not have it.
     """
 
     found: Optional[int] = None  # the buckets (S3), tables (DynamoDB) or repositories (GitHub) there are
@@ -62,6 +62,12 @@ class BackupCounts:
     excluded: Optional[int] = None  # those that were not backed up because they are in the exclusion list
     files: Optional[int] = None  # S3: the files in the backup of the buckets that were synced, whenever they were downloaded
     files_synced: Optional[int] = None  # S3: the files that were downloaded in this run
+    size: Optional[int] = None  # S3: the total size (bytes) of the files in the backup of the buckets that were synced
+    oldest_file_mtime: Optional[float] = None  # S3: the earliest modification time of those files (epoch seconds)
+    newest_file_mtime: Optional[float] = None  # S3: the latest modification time of those files (epoch seconds)
+    files_hash: Optional[str] = None  # S3: a hash (hex SHA-256) of the path, size and modification time of those files - not of their contents
+    items: Optional[int] = None  # DynamoDB: the items of the tables that were backed up
+    branches: Optional[int] = None  # GitHub: the branches of the repositories that were backed up
 
 
 @dataclass(frozen=True)
@@ -102,8 +108,20 @@ class BackupRun:
         return None if duration is None or duration <= 0.0 else self.received_bytes / duration
 
 
-# the columns of the history table that are the fields of BackupCounts, in order
-count_columns = ("found_count", "backed_up_count", "excluded_count", "file_count", "synced_file_count")
+# the columns of the history table that are the fields of BackupCounts, in order, each with its SQLite type
+count_columns = {
+    "found_count": "INTEGER",
+    "backed_up_count": "INTEGER",
+    "excluded_count": "INTEGER",
+    "file_count": "INTEGER",
+    "synced_file_count": "INTEGER",
+    "file_size": "INTEGER",
+    "oldest_file_mtime": "REAL",
+    "newest_file_mtime": "REAL",
+    "files_hash": "TEXT",
+    "item_count": "INTEGER",
+    "branch_count": "INTEGER",
+}
 
 # the columns of the history table, which are the fields of BackupRun in order (and of its BackupCounts, last)
 history_columns = "id, backup_type, ui_type, pid, process_start, started, ended, status, received_bytes, read_units, cost, error_count, warning_count, errors, " + ", ".join(count_columns)
@@ -172,12 +190,12 @@ class BackupHistory(SQLiteStore):
                 "error_count INTEGER NOT NULL DEFAULT 0, warning_count INTEGER NOT NULL DEFAULT 0, errors TEXT NOT NULL DEFAULT '[]')"
             )
             if self._get_missing_columns(connection):
-                # The database was made by a bup that did not have these columns (bup 0.17.0 had no counts). Its runs stay as they
-                # are, with no counts. More than one backup can open the history at the same time, so the columns are looked for
-                # again once the database is locked: only one of them adds a column.
+                # The database was made by a bup that did not have these columns (bup 0.17.0 had no counts, and up to 0.21.0 only
+                # the first five). Its runs stay as they are, without them. More than one backup can open the history at the same
+                # time, so the columns are looked for again once the database is locked: only one of them adds a column.
                 connection.execute("BEGIN IMMEDIATE")
                 for column in self._get_missing_columns(connection):
-                    connection.execute(f"ALTER TABLE backup_runs ADD COLUMN {column} INTEGER")
+                    connection.execute(f"ALTER TABLE backup_runs ADD COLUMN {column} {count_columns[column]}")
 
     @staticmethod
     def _get_missing_columns(connection: sqlite3.Connection) -> List[str]:
