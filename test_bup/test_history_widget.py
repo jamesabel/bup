@@ -47,7 +47,19 @@ def test_backup_runs_are_shown_most_recent_first(qapp):
     started = datetime(2026, 11, 20, 12, 0, 0).timestamp()
     run_id = history.start(BackupTypes.DynamoDB, UITypes.cli, started=started)
     transfer_total = TransferRecord(BackupTypes.DynamoDB, "transfer total", 2048 * 3725, 12.5, 0.25)
-    counts = BackupCounts(found=12, backed_up=10, excluded=2, files=1234567, files_synced=89)
+    counts = BackupCounts(
+        found=12,
+        backed_up=10,
+        excluded=2,
+        files=1234567,
+        files_synced=89,
+        size=3 * 1024**3,
+        oldest_file_mtime=datetime(2019, 3, 1, 9, 0, 0).timestamp(),
+        newest_file_mtime=datetime(2026, 11, 20, 11, 59, 0).timestamp(),
+        files_hash="0123456789abcdef" * 4,
+        items=45678,
+        branches=1234,
+    )
     history.update(run_id, BackupStatus.completed_with_errors, transfer_total, 2, 1, ["first error", "second error"], ended=started + 3725.0, counts=counts)
     history.start(BackupTypes.github, UITypes.gui, started=datetime(2026, 11, 21, 8, 30, 15).timestamp())
 
@@ -64,8 +76,13 @@ def test_backup_runs_are_shown_most_recent_first(qapp):
         "Found": "",  # not counted yet
         "Backed up": "",
         "Excluded": "",
+        "Items": "",
+        "Branches": "",
         "Files": "",
         "Files synced": "",
+        "Size": "",
+        "File dates": "",
+        "Files hash": "",
         "Received": "0 B",
         "Average rate": "",
         "Read units": "",
@@ -84,8 +101,13 @@ def test_backup_runs_are_shown_most_recent_first(qapp):
         "Found": "12",
         "Backed up": "10",
         "Excluded": "2",
+        "Items": "45,678",
+        "Branches": "1,234",
         "Files": "1,234,567",
         "Files synced": "89",
+        "Size": "3.0 GB",
+        "File dates": "2019-03-01 to 2026-11-20",
+        "Files hash": "0123456789ab",  # the start of it
         "Received": "7.3 MB",
         "Average rate": "2.0 KB/s",
         "Read units": "12.5",
@@ -96,6 +118,24 @@ def test_backup_runs_are_shown_most_recent_first(qapp):
     }
     # every error is in the tool tip
     assert history_widget.table.item(1, columns.index("Error details")).toolTip() == "first error\nsecond error"
+    # and all of the hash in its tool tip
+    assert history_widget.table.item(1, columns.index("Files hash")).toolTip() == "0123456789abcdef" * 4
+    assert history_widget.table.item(0, columns.index("Files hash")).toolTip() == ""
+
+
+# AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.
+@pytest.mark.parametrize(
+    "oldest,newest,expected",
+    [
+        (None, None, ""),
+        (datetime(2026, 11, 20, 0, 0, 1), datetime(2026, 11, 20, 23, 59, 59), "2026-11-20"),  # one day
+        (datetime(2026, 11, 20, 23, 59, 59), datetime(2026, 11, 21, 0, 0, 1), "2026-11-20 to 2026-11-21"),
+    ],
+)
+def test_file_dates_are_the_days_of_the_oldest_and_the_newest_file(oldest, newest, expected):
+    from bup.gui.history_widget import format_date_range
+
+    assert format_date_range(oldest and oldest.timestamp(), newest and newest.timestamp()) == expected
 
 
 # AI-GENERATED TEST (Claude Code) - delete this line to make this test human-owned.

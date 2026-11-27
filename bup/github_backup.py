@@ -199,6 +199,8 @@ class GithubBackup(BupBase):
             return
 
         self.start_counts(len(repositories), dry_run)
+        if not dry_run:  # a dry run does not ask for the branches
+            self.counts.branches = 0
 
         outcome_counts = {repo_outcome: 0 for repo_outcome in RepoOutcomes}
         for github_repo in repositories:
@@ -243,10 +245,13 @@ class GithubBackup(BupBase):
         clone_url = github_repo.clone_url  # tokenless - credentials go via the environment
 
         if repo_dir.exists() and self.pull_repo(repo_owner_and_name, branches, repo_dir, clone_url):
-            return RepoOutcomes.pulled
-        if self.clone_repo(repo_owner_and_name, branches, repo_dir, clone_url):
-            return RepoOutcomes.cloned
-        return RepoOutcomes.failed
+            repo_outcome = RepoOutcomes.pulled
+        elif self.clone_repo(repo_owner_and_name, branches, repo_dir, clone_url):
+            repo_outcome = RepoOutcomes.cloned
+        else:
+            return RepoOutcomes.failed
+        self.counts.branches = (self.counts.branches or 0) + len(branches)
+        return repo_outcome
 
     def pull_repo(self, repo_owner_and_name: str, branches: list, repo_dir: Path, clone_url: str) -> bool:
         """
