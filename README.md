@@ -77,6 +77,12 @@ pip install bup
 Run `bup` with no arguments for the GUI. Set the backup directory and credentials in the Preferences tab, then press
 Start in the Backup tab (or enable the automatic backup).
 
+The Preferences tab has a test of the credentials for each backup type, so that you do not have to run a backup to
+find out if they work: **Test S3** lists your buckets, **Test DynamoDB** lists the tables of the region, and **Test
+GitHub** asks GitHub whose token it is. Each says "OK" with what it found, or why it failed, in the status line at the bottom of the window.
+A test backs up nothing and writes nothing. (S3 and DynamoDB have a test each since the permissions of the same AWS
+credentials can differ between them.)
+
 Stop asks the running backups to stop, which they do at the next point where they can, so it can take a while. The
 status line at the bottom of the window says that the backup is stopping, and then when it stopped. A backup you
 stopped is not started again by the automatic backup until the backup period has passed since the stop (press Start to
